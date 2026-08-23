@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Lunar.Api/Lunar.Api.csproj" />
+    <Project Path="src/Lunar.Core/Lunar.Core.csproj" />
+    <Project Path="src/Lunar.Infrastructure/Lunar.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Lunar.Tests/Lunar.Tests.csproj" />
+  </Folder>
+</Solution>

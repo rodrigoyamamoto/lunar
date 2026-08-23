@@ -1,0 +1,24 @@
+# .NET
+bin/
+obj/
+
+# Node
+node_modules/
+dist/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# User specific
+*.user
+*.suo
+
+# Generated artifacts
+artifacts/*
+!artifacts/.gitkeep
