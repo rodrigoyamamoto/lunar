@@ -1,9 +1,11 @@
-﻿namespace Lunar.Core.Workflows;
+﻿using Lunar.Core.Primitives;
+
+namespace Lunar.Core.Workflows;
 
 public readonly record struct WorkflowExecutionId(Guid Value)
 {
     public static WorkflowExecutionId New()
     {
-        return new WorkflowExecutionId(Guid.CreateVersion7());
+        return new WorkflowExecutionId(IdGenerator.New());
     }
 }
