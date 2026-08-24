@@ -55,8 +55,20 @@ Represents one execution instance.
 Responsibilities:
 
 -   identify the execution
+-   identify the Asset being processed
+-   identify the Workflow Definition being executed
 -   track lifecycle status
 -   provide traceability
+
+Every Workflow Execution references:
+
+-   `AssetId AssetId` — the Asset being processed.
+-   `WorkflowDefinitionId WorkflowDefinitionId` — the Workflow Definition being
+    executed.
+
+An execution cannot be created without both identifiers. See the
+[Workflow Definition Model](./workflow-definition-model.md) for the definition
+and capability concepts.
 
 ### Workflow Execution Status
 
@@ -105,7 +117,6 @@ domain until they are required.
 Possible future concepts:
 
 -   workflow templates
--   workflow steps
 -   retries
 -   checkpoints
 -   resumable executions

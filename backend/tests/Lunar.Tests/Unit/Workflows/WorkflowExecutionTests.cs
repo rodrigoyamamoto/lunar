@@ -1,24 +1,67 @@
-﻿using Lunar.Core.Workflows;
+using Lunar.Core.Assets;
+using Lunar.Core.Workflows;
 
 namespace Lunar.Tests.Unit.Workflows;
 
 public class WorkflowExecutionTests
 {
     [Fact]
-    public void Create_ShouldCreateExecutionWithCreatedStatus()
+    public void Create_ShouldStartWithCreatedStatus()
     {
-        var execution = WorkflowExecution.Create();
+        var execution = CreateExecution();
 
         Assert.Equal(
             WorkflowExecutionStatus.Created,
             execution.Status);
     }
 
+    [Fact]
+    public void Create_ShouldPreserveSuppliedAssetId()
+    {
+        var assetId = AssetId.New();
+
+        var execution = WorkflowExecution.Create(
+            assetId,
+            WorkflowDefinitionId.New());
+
+        Assert.Equal(assetId, execution.AssetId);
+    }
 
     [Fact]
-    public void Start_ShouldMoveExecutionToRunning()
+    public void Create_ShouldPreserveSuppliedWorkflowDefinitionId()
     {
-        var execution = WorkflowExecution.Create();
+        var definitionId = WorkflowDefinitionId.New();
+
+        var execution = WorkflowExecution.Create(
+            AssetId.New(),
+            definitionId);
+
+        Assert.Equal(definitionId, execution.WorkflowDefinitionId);
+    }
+
+    [Fact]
+    public void Create_ShouldRejectEmptyAssetId()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Create(
+                new AssetId(Guid.Empty),
+                WorkflowDefinitionId.New()));
+    }
+
+    [Fact]
+    public void Create_ShouldRejectEmptyWorkflowDefinitionId()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Create(
+                AssetId.New(),
+                new WorkflowDefinitionId(Guid.Empty)));
+    }
+
+
+    [Fact]
+    public void Start_ShouldMoveCreatedToRunningAndSetStartedAt()
+    {
+        var execution = CreateExecution();
 
         execution.Start();
 
@@ -31,9 +74,9 @@ public class WorkflowExecutionTests
 
 
     [Fact]
-    public void Complete_ShouldFinishRunningExecution()
+    public void Complete_ShouldMoveRunningToCompletedAndSetCompletedAt()
     {
-        var execution = WorkflowExecution.Create();
+        var execution = CreateExecution();
 
         execution.Start();
         execution.Complete();
@@ -47,9 +90,9 @@ public class WorkflowExecutionTests
 
 
     [Fact]
-    public void Fail_ShouldFinishRunningExecution()
+    public void Fail_ShouldMoveRunningToFailedAndSetCompletedAt()
     {
-        var execution = WorkflowExecution.Create();
+        var execution = CreateExecution();
         execution.Start();
 
         execution.Fail();
@@ -63,9 +106,9 @@ public class WorkflowExecutionTests
 
 
     [Fact]
-    public void Cancel_ShouldFinishRunningExecution()
+    public void Cancel_ShouldMoveRunningToCancelledAndSetCompletedAt()
     {
-        var execution = WorkflowExecution.Create();
+        var execution = CreateExecution();
         execution.Start();
 
         execution.Cancel();
@@ -81,7 +124,7 @@ public class WorkflowExecutionTests
     [Fact]
     public void Complete_ShouldNotChangeCreatedExecution()
     {
-        var execution = WorkflowExecution.Create();
+        var execution = CreateExecution();
 
         execution.Complete();
 
@@ -96,7 +139,7 @@ public class WorkflowExecutionTests
     [Fact]
     public void Start_ShouldNotRestartCompletedExecution()
     {
-        var execution = WorkflowExecution.Create();
+        var execution = CreateExecution();
         execution.Start();
         execution.Complete();
 
@@ -105,5 +148,13 @@ public class WorkflowExecutionTests
         Assert.Equal(
             WorkflowExecutionStatus.Completed,
             execution.Status);
+    }
+
+
+    private static WorkflowExecution CreateExecution()
+    {
+        return WorkflowExecution.Create(
+            AssetId.New(),
+            WorkflowDefinitionId.New());
     }
 }
