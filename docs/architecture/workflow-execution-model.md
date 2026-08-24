@@ -204,6 +204,30 @@ validates structural invariants:
 
 It does not act as an unrestricted backdoor to invalid lifecycle states.
 
+## Application Orchestration
+
+The Application layer coordinates workflow execution creation through
+`ExecuteWorkflowService`. The service:
+
+-   retrieves the exact Workflow Definition version through
+    `IWorkflowDefinitionRepository`;
+-   creates a `WorkflowExecution` through the domain `Create` factory;
+-   persists the new execution through `IWorkflowExecutionRepository`;
+-   returns a `Result<WorkflowExecution>` outcome.
+
+The service does not own domain invariants, lifecycle transitions, or
+persistence mechanics. It does not duplicate domain validation — input
+validation is delegated to the domain `Create` factory and repository
+contracts. It does not introduce CQRS.
+
+Expected use-case failures are returned as `Result` failures, not
+thrown. `WorkflowDefinitionNotFound` is returned when the requested
+definition version does not exist.
+`WorkflowExecutionPersistenceFailed` is returned when the repository
+rejects insertion. Invalid caller/programmer usage (null dependencies,
+invalid domain construction) remains exception-based. Core does not
+depend on `Result` or any Application concern.
+
 ## Future Evolution
 
 Possible future concepts:

@@ -43,9 +43,11 @@ Implemented:
 - `InMemoryWorkflowDefinitionRepository` Infrastructure adapter;
 - `InMemoryWorkflowExecutionRepository` Infrastructure adapter;
 - `WorkflowExecution.Rehydrate` persistence reconstruction factory;
+- `ExecuteWorkflowService` Application layer orchestration;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
 - Infrastructure repository tests;
+- Application service tests;
 - repository and project boundaries.
 
 Still scaffolding or intentionally absent:
@@ -86,12 +88,15 @@ backend/
       Capabilities/        Provider-independent capability concepts
       Workers/             Placeholder
     Lunar.Infrastructure/  Technical implementations
-      Persistence/         In-memory workflow definition repository
+      Persistence/         In-memory workflow repositories
+    Lunar.Application/     Application-layer orchestration
+      Workflows/           ExecuteWorkflowService
     Lunar.Api/             Composition/API boundary; currently template only
   tests/
     Lunar.Tests/
       Unit/                Core domain unit tests
       Infrastructure/      Infrastructure adapter tests
+      Application/         Application service tests
       Integration/         Placeholder
 
 frontend/                  React/Vite starter application
@@ -110,21 +115,27 @@ The allowed project dependency direction is:
 
 ```text
 Lunar.Api ───────────────> Lunar.Core
+    └──────> Lunar.Application ───────> Lunar.Core
     └──────> Lunar.Infrastructure ───────> Lunar.Core
 
 Lunar.Tests ─────────────> Lunar.Core
+Lunar.Tests ─────────────> Lunar.Application
 Lunar.Tests ─────────────> Lunar.Infrastructure
 Lunar.Core ──────────────> no Lunar project and no external technology
 ```
 
 Rules:
 
-- Core must not reference Infrastructure, API, providers, databases, file
-  systems, external SDKs, AI models, Blender, Unreal, or Unity.
+- Core must not reference Infrastructure, API, Application, providers,
+  databases, file systems, external SDKs, AI models, Blender, Unreal, or
+  Unity.
+- Application coordinates use cases by depending on Core abstractions. It
+  must not reference Infrastructure directly; the API composes Application
+  services with Infrastructure adapters.
 - Infrastructure adapts technical systems to Core concepts.
 - API is the composition and delivery boundary.
-- Tests reference only projects they currently exercise. Do not add an
-  Infrastructure reference to unit tests in anticipation of future tests.
+- Tests reference only projects they currently exercise. Do not add a
+  reference in anticipation of future tests.
 - Avoid cycles and speculative layers.
 
 ## Source of Architectural Truth
@@ -298,6 +309,43 @@ development/test adapter with snapshot isolation — stored and returned
 objects are isolated copies, so mutating a caller's object does not affect
 repository state.
 
+### Application Layer
+
+The Application layer coordinates use cases. It depends on Core
+abstractions (domain objects and persistence contracts) but does not
+reference Infrastructure directly. The API composes Application services
+with Infrastructure adapters at runtime.
+
+`ExecuteWorkflowService` is the first Application service. It coordinates:
+
+- retrieving the exact Workflow Definition version through
+  `IWorkflowDefinitionRepository`;
+- creating a `WorkflowExecution` through the domain `Create` factory;
+- persisting the new execution through `IWorkflowExecutionRepository`;
+- returning an explicit `Result<WorkflowExecution>` outcome.
+
+The service does not own domain invariants, lifecycle transitions, or
+persistence mechanics. It does not duplicate domain logic — input
+validation is delegated to the domain `Create` factory and repository
+contracts. It does not introduce CQRS — `Command`, `Query`, and `Handler`
+suffixes remain reserved for possible future adoption.
+
+Application services use a Result pattern for expected use-case outcomes.
+`Result<T>` is owned by `Lunar.Application` and does not leak into Core.
+`Result<T>.Success(value)` represents a successful outcome;
+`Result<T>.Failure(error)` represents an expected use-case failure.
+Application errors (`WorkflowDefinitionNotFound`,
+`WorkflowExecutionPersistenceFailed`) are sealed records inheriting from
+`ApplicationError`. They represent failed use-case execution, not domain
+exceptions or programmer errors.
+
+Exception policy:
+
+- Invalid caller/programmer usage (null dependencies, invalid domain
+  construction) remains exception-based.
+- Expected use-case outcomes (definition not found, persistence rejected)
+  are returned as `Result` failures, not thrown.
+
 ## Design Rules
 
 - Prefer the simplest explicit domain model that satisfies a real requirement.
@@ -308,8 +356,9 @@ repository state.
   or Infrastructure—not in Core.
 - Preserve history and traceability; generated artifacts are not the Asset.
 - Expected invalid lifecycle transitions currently use no-op guards. Do not
-  introduce exceptions or a Result abstraction without a concrete caller that
-  needs failure details.
+  introduce exceptions or a Result abstraction in Core without a concrete
+  caller that needs failure details. The Application layer owns its own
+  `Result<T>` for use-case outcomes; Core does not depend on it.
 - Give one clear recommended implementation for simple decisions; avoid a menu
   of speculative alternatives.
 

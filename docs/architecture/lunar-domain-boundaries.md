@@ -183,6 +183,33 @@ Execution contains lifecycle information:
 
 ------------------------------------------------------------------------
 
+# Application Layer
+
+The Application layer coordinates use cases by depending on Core
+abstractions. It does not reference Infrastructure directly; the API
+composes Application services with Infrastructure adapters at runtime.
+
+`ExecuteWorkflowService` is the first Application service. It
+coordinates workflow execution creation: it retrieves the exact Workflow
+Definition version, creates a `WorkflowExecution` through the domain
+factory, and persists it through the Core-owned repository contract.
+
+The Application layer does not own domain invariants, lifecycle
+transitions, or persistence mechanics. It does not duplicate domain
+validation — input validation is delegated to the domain `Create` factory
+and repository contracts. It does not introduce CQRS.
+
+Application services use a Result pattern for expected use-case outcomes.
+`Result<T>` is owned by `Lunar.Application` and does not leak into Core.
+`Result<T>.Success(value)` represents a successful outcome;
+`Result<T>.Failure(error)` represents an expected use-case failure such
+as `WorkflowDefinitionNotFound` or `WorkflowExecutionPersistenceFailed`.
+Invalid caller/programmer usage (null dependencies, invalid domain
+construction) remains exception-based; expected use-case outcomes are
+returned as `Result` failures, not thrown.
+
+------------------------------------------------------------------------
+
 # Infrastructure Boundary
 
 Infrastructure provides technical implementations required by the Core.
