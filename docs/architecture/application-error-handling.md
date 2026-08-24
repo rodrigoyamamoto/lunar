@@ -1,0 +1,191 @@
+# Application Error Handling
+
+This document establishes the Application-layer error-handling conventions
+for Lunar Asset Studio. It defines the Result pattern ownership, failure
+classification, and validation framework policy.
+
+## Result Pattern Ownership
+
+The `Result<T>` type and `ApplicationError` hierarchy belong exclusively to
+`Lunar.Application`. They do not exist in and are not referenced by
+`Lunar.Core` or `Lunar.Infrastructure`.
+
+```text
+Lunar.Application
+    Result<T>
+    ApplicationError
+    WorkflowDefinitionNotFound
+    WorkflowExecutionPersistenceFailed
+```
+
+Allowed:
+
+```text
+Lunar.Application -> Result<T>
+Task<Result<T>> as an Application service return type
+```
+
+Not allowed:
+
+```text
+Lunar.Core -> Result<T>
+Lunar.Infrastructure -> Result<T>
+Domain entities returning Result<T>
+Value objects returning Result<T>
+```
+
+Core must remain independent of Application concerns.
+
+## Failure Classification
+
+### Expected use-case outcomes
+
+Use `Result<T>.Failure(error)`.
+
+These are outcomes the application can anticipate and represent
+explicitly. They are not programmer errors or unexpected technical
+failures.
+
+Examples:
+
+```text
+Workflow definition does not exist
+Workflow execution could not be persisted
+Requested operation is not available
+Business rule prevents execution
+```
+
+Current concrete errors:
+
+-   `WorkflowDefinitionNotFound` — the requested definition version was
+    not found in the repository;
+-   `WorkflowExecutionPersistenceFailed` — the repository rejected
+    insertion of a new execution.
+
+### Programmer/domain errors
+
+Remain exceptions.
+
+These represent invalid usage or broken invariants. They should not be
+caught and converted into `Result` failures.
+
+Examples:
+
+```text
+null dependency injection
+invalid constructor argument
+broken domain invariant
+invalid object creation
+empty identifier
+invalid version number
+```
+
+Core entities, factories, and value objects throw `ArgumentException` or
+`ArgumentNullException` for these cases. Application services let these
+propagate.
+
+### Unexpected technical failures
+
+Do not blindly convert into `Result` failures.
+
+Examples:
+
+```text
+database unavailable
+network failure
+unexpected provider crash
+filesystem failure
+```
+
+These require an explicit resilience policy when durable infrastructure is
+introduced. The current in-memory adapters do not produce these failures.
+Do not introduce catch-all exception-to-Result conversion in Application
+services. Each unexpected failure category requires a deliberate decision
+in a future slice.
+
+## Current Implementation
+
+`ExecuteWorkflowService` is the only Application service. It returns
+`Result<WorkflowExecution>` from `ExecuteAsync`:
+
+-   **Success:** `Result<WorkflowExecution>.Success(execution)` when the
+    definition exists and the execution is persisted;
+-   **Expected failure:** `Result<WorkflowExecution>.Failure(...)` when
+    the definition is not found or persistence is rejected;
+-   **Exceptions:** `ArgumentNullException` for null dependencies;
+    `ArgumentException` from `WorkflowExecution.Create` for invalid
+    identifiers or version; `OperationCanceledException` for cancelled
+    tokens.
+
+No `catch` blocks exist in Application code. No exception-to-Result
+conversion is performed. Domain exceptions propagate naturally.
+
+## FluentValidation Policy
+
+FluentValidation is not currently introduced.
+
+It may be introduced in a future slice only when Application-layer
+request validation becomes complex enough to justify it. Complex means:
+multiple cross-field rules, user input composition, or request shapes
+that cannot be validated by simple guard clauses.
+
+### When introduced
+
+Allowed:
+
+```text
+Lunar.Application -> FluentValidation
+```
+
+Not allowed:
+
+```text
+Lunar.Core -> FluentValidation
+```
+
+FluentValidation must not replace:
+
+-   entity invariants;
+-   value object validity;
+-   identifier validity;
+-   domain lifecycle rules.
+
+Those remain in Core.
+
+Appropriate FluentValidation use cases:
+
+```text
+GenerateAssetRequest
+ImportReferenceRequest
+ProviderExecutionRequest
+```
+
+Appropriate rules:
+
+```text
+required fields
+cross-field validation
+user input validation
+request composition rules
+```
+
+If a future slice introduces FluentValidation:
+
+-   justify the dependency in an ADR;
+-   add tests;
+-   ensure it stays in Application;
+-   do not leak validators into Core;
+-   propose a separate refactor slice for any existing validation that
+    should move to FluentValidation.
+
+## Architecture Compliance
+
+-   `Result<T>` is owned by `Lunar.Application` only;
+-   `Lunar.Core` has no reference to `Result` or `ApplicationError`;
+-   `Lunar.Infrastructure` has no reference to `Result` or
+    `ApplicationError`;
+-   `Lunar.Application` depends only on `Lunar.Core`;
+-   no external packages are used for Result or error handling;
+-   no generic abstractions (`IResult`, `ResultBase`) are introduced;
+-   no catch-all exception conversion exists;
+-   domain invariants remain in Core entities and factories.

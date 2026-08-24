@@ -150,6 +150,7 @@ Read these before changing the related area:
 - `docs/architecture/asset-lifecycle-model.md` — Asset and Artifact semantics
 - `docs/architecture/workflow-execution-model.md` — execution lifecycle
 - `docs/architecture/workflow-definition-model.md` — workflow definition and capability model
+- `docs/architecture/application-error-handling.md` — Application Result pattern and error classification
 
 Accepted ADRs describe binding decisions. Architecture documents describe the
 current model. Code and tests implement that model. If they disagree, do not
