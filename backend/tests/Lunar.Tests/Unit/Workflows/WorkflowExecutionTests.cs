@@ -44,4 +44,66 @@ public class WorkflowExecutionTests
 
         Assert.NotNull(execution.CompletedAt);
     }
+
+
+    [Fact]
+    public void Fail_ShouldFinishRunningExecution()
+    {
+        var execution = WorkflowExecution.Create();
+        execution.Start();
+
+        execution.Fail();
+
+        Assert.Equal(
+            WorkflowExecutionStatus.Failed,
+            execution.Status);
+
+        Assert.NotNull(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Cancel_ShouldFinishRunningExecution()
+    {
+        var execution = WorkflowExecution.Create();
+        execution.Start();
+
+        execution.Cancel();
+
+        Assert.Equal(
+            WorkflowExecutionStatus.Cancelled,
+            execution.Status);
+
+        Assert.NotNull(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Complete_ShouldNotChangeCreatedExecution()
+    {
+        var execution = WorkflowExecution.Create();
+
+        execution.Complete();
+
+        Assert.Equal(
+            WorkflowExecutionStatus.Created,
+            execution.Status);
+
+        Assert.Null(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Start_ShouldNotRestartCompletedExecution()
+    {
+        var execution = WorkflowExecution.Create();
+        execution.Start();
+        execution.Complete();
+
+        execution.Start();
+
+        Assert.Equal(
+            WorkflowExecutionStatus.Completed,
+            execution.Status);
+    }
 }

@@ -128,7 +128,7 @@ Examples:
 
 Execution contains lifecycle information:
 
--   started
+-   created
 -   running
 -   completed
 -   failed

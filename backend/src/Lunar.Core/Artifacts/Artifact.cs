@@ -1,4 +1,5 @@
 ﻿using Lunar.Core.Assets;
+using Lunar.Core.Workflows;
 
 namespace Lunar.Core.Artifacts;
 
@@ -12,6 +13,8 @@ public sealed class Artifact
 
     public ArtifactType Type { get; }
 
+    public WorkflowExecutionId? SourceExecutionId { get; }
+
     public DateTimeOffset CreatedAt { get; }
 
 
@@ -19,12 +22,14 @@ public sealed class Artifact
         ArtifactId id,
         AssetId assetId,
         string name,
-        ArtifactType type)
+        ArtifactType type,
+        WorkflowExecutionId? sourceExecutionId = null)
     {
         Id = id;
         AssetId = assetId;
         Name = name;
         Type = type;
+        SourceExecutionId = sourceExecutionId;
         CreatedAt = DateTimeOffset.UtcNow;
     }
 }

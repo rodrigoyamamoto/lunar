@@ -1,8 +1,8 @@
-\# ADR-003 - Central Package Management
+# ADR-003 - Central Package Management
 
 
 
-\## Status
+## Status
 
 
 
@@ -10,7 +10,7 @@ Accepted
 
 
 
-\## Context
+## Context
 
 
 
@@ -24,7 +24,7 @@ dependency upgrades harder to maintain.
 
 
 
-\## Decision
+## Decision
 
 
 
@@ -44,7 +44,7 @@ Individual projects reference packages without defining versions.
 
 
 
-\## Consequences
+## Consequences
 
 
 
@@ -52,13 +52,13 @@ Benefits:
 
 
 
-\- consistent dependency versions
+- consistent dependency versions
 
-\- easier upgrades
+- easier upgrades
 
-\- reduced duplication
+- reduced duplication
 
-\- clearer dependency ownership
+- clearer dependency ownership
 
 
 

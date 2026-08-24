@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft
+Accepted
 
 ## Purpose
 
@@ -91,6 +91,14 @@ Execution:
         +-- Rigged Model Artifact
 
 Artifacts remain independent domain entities.
+
+An Artifact stores an optional `SourceExecutionId` identifying the workflow
+execution that produced it. The relationship is optional because imported or
+user-provided artifacts may not originate from a Lunar workflow execution.
+
+The Workflow Execution does not own an in-memory collection of artifacts in
+this initial model. This keeps persistence and aggregate decisions outside the
+domain until they are required.
 
 ## Future Evolution
 

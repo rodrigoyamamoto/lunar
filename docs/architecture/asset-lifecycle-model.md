@@ -37,6 +37,23 @@ Example:
 
 The Asset may produce multiple artifacts throughout its lifecycle.
 
+## Initial Asset Status
+
+The initial status flow is:
+
+    Draft
+      |
+      v
+    Processing
+      |
+      +-- Completed
+      |
+      +-- Failed
+
+A completed or failed Asset may return to Processing when another generation
+attempt begins. Completion and failure are valid only while the Asset is being
+processed. Invalid transition requests do not change the current status.
+
 ------------------------------------------------------------------------
 
 # Artifact Concept
@@ -99,6 +116,10 @@ The system should be able to understand:
 -   which workflow produced it
 -   which capability produced it
 -   which parameters influenced the result
+
+An Artifact records the optional identifier of the Workflow Execution that
+produced it. The identifier is optional because an imported or user-provided
+artifact may exist without a workflow execution.
 
 ------------------------------------------------------------------------
 

@@ -1,4 +1,4 @@
-\# Lunar Asset Studio
+# Lunar Asset Studio
 
 
 
@@ -6,7 +6,7 @@ AI-assisted asset creation pipeline.
 
 
 
-\## Architecture
+## Architecture
 
 
 
@@ -18,5 +18,5 @@ workers/
 
 
 
-\## Development
+## Development
 
