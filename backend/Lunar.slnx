@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/SolutionConfiguration/">
+    <File Path="../Directory.Packages.props" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Lunar.Api/Lunar.Api.csproj" />
     <Project Path="src/Lunar.Core/Lunar.Core.csproj" />
