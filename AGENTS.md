@@ -313,6 +313,185 @@ repository state.
 - Give one clear recommended implementation for simple decisions; avoid a menu
   of speculative alternatives.
 
+## Naming Conventions
+
+Names must communicate architectural responsibility. Avoid generic names
+that create ambiguity between different architectural concepts.
+
+### Commands
+
+The suffix `Command` is reserved exclusively for CQRS command objects.
+
+Examples:
+
+```text
+CreateAssetCommand
+StartWorkflowExecutionCommand
+GenerateArtifactCommand
+```
+
+A Command represents an intention or request to change system state. Do
+not use `Command` as a generic suffix for services, operations, workflow
+actions, or arbitrary request models. Avoid names such as
+`AssetCommandService` or `WorkflowCommandProcessor` unless they are
+explicitly justified as part of a CQRS design.
+
+### Queries
+
+The suffix `Query` is reserved exclusively for CQRS query objects.
+
+Examples:
+
+```text
+GetAssetQuery
+GetWorkflowExecutionHistoryQuery
+SearchGeneratedAssetsQuery
+```
+
+A Query represents a request for information retrieval. Do not use
+`Query` as a generic name for repositories, database queries, helper
+classes, or infrastructure data access objects.
+
+### Handlers
+
+The suffix `Handler` is reserved exclusively for CQRS command or query
+handlers.
+
+Examples:
+
+```text
+CreateAssetCommandHandler
+GetAssetQueryHandler
+```
+
+A Handler receives a specific `Command` or `Query` and produces a result
+or state change. Do not use `Handler` as a generic suffix for services,
+processors, workflow steps, event listeners, or arbitrary logic
+containers. Avoid names such as `GenerationHandler` or
+`WorkflowHandler` unless they are explicitly justified as part of a
+CQRS design.
+
+### Services
+
+The suffix `Service` is allowed only when the architectural
+responsibility is clear. A Service must belong to a specific
+architectural layer.
+
+**Application Services** orchestrate use cases, coordinate domain
+objects, depend on domain abstractions, should not contain domain
+invariants, and should not become "god classes". Examples:
+`GenerateAssetService`, `ExecuteWorkflowService`.
+
+**Domain Services** live inside the Core/domain layer, contain domain
+logic that does not naturally belong to a single aggregate, and require
+explicit justification. Avoid creating Domain Services simply because an
+entity has many methods. Prefer keeping behavior inside aggregates when
+ownership is clear.
+
+**Infrastructure Services** handle technical concerns, integrate with
+external systems, and implement infrastructure-specific behavior. They
+must not leak infrastructure concerns into Core.
+
+### Repositories
+
+The suffix `Repository` is reserved for persistence boundaries that
+implement a Core-owned persistence contract.
+
+Naming pattern:
+
+```text
+I{Aggregate}Repository          — Core interface
+InMemory{Aggregate}Repository   — Infrastructure in-memory adapter
+```
+
+Examples:
+
+```text
+IWorkflowDefinitionRepository
+InMemoryWorkflowDefinitionRepository
+
+IWorkflowExecutionRepository
+InMemoryWorkflowExecutionRepository
+```
+
+A Repository stores and retrieves domain aggregates. It must not
+contain domain logic, enforce domain invariants, or become a generic
+data access object. Each Repository is specific to one aggregate and
+reflects that aggregate's persistence semantics (e.g. insert-only for
+immutable versions, optimistic concurrency for mutable aggregates). Do
+not create a generic `IRepository<T>` or `RepositoryBase<T>`; design
+each repository from its actual requirements.
+
+### Events
+
+The suffix `Event` is reserved for domain or integration event objects
+that represent something that has already happened.
+
+Examples:
+
+```text
+WorkflowExecutionStartedEvent
+ArtifactGeneratedEvent
+AssetCompletedEvent
+```
+
+An Event is a fact about a past state change. It is not a command, a
+request, or an instruction. Name events in past tense to reflect that
+the change has occurred. Do not use `Event` as a generic suffix for
+messages, notifications, callbacks, or arbitrary data containers. Do
+not introduce a domain event bus or event dispatcher without a concrete
+requirement; the suffix is reserved so that future event-driven design
+does not conflict with existing names.
+
+### Avoid Generic Naming
+
+The following names should be avoided unless there is strong
+justification:
+
+```text
+Manager
+Helper
+Utility
+Processor
+Coordinator
+Engine
+Controller
+```
+
+These names frequently hide unclear responsibilities. Prefer names that
+communicate intent.
+
+Avoid: `AssetManager`, `WorkflowProcessor`, `GenerationCoordinator`.
+
+Prefer: `AssetRepository`, `GenerateAssetService`,
+`WorkflowExecutionRepository` — when those responsibilities are actually
+correct.
+
+### Architectural Intent
+
+The current direction is an Application Service orchestrating domain
+objects directly:
+
+```text
+Application Layer
+
+GenerateAssetService
+        |
+        v
+
+Domain Model
+```
+
+If CQRS is adopted in the future, `Command` and `Query` objects (and
+their corresponding `Handler` implementations) would sit between the
+Application Service and the Domain Model. CQRS is not currently adopted;
+the `Command`, `Query`, and `Handler` suffixes are reserved so that
+future adoption does not conflict with existing names.
+
+Names should reveal ownership, responsibility, architectural layer, and
+whether the object represents data, orchestration, persistence, or
+domain behavior.
+
 ## Package Management
 
 `Directory.Packages.props` at the repository root is the only source of NuGet
