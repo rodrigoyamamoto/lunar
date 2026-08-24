@@ -30,6 +30,30 @@ Examples:
 The Asset represents the identity and lifecycle of the thing being
 created.
 
+An Asset contains:
+
+-   `AssetId Id` — the strongly typed identifier.
+-   `string Name` — a required human-readable name describing the
+    creative entity.
+-   `AssetType Type` — the kind of asset.
+-   `AssetStatus Status` — the lifecycle status.
+-   `DateTimeOffset CreatedAt` — the creation time.
+
+The `Name` is descriptive domain identity. It is not:
+
+-   a file name;
+-   an artifact name;
+-   a storage key;
+-   a provider identifier;
+-   a model identifier;
+-   an Unreal asset path;
+-   a project path.
+
+Creation of an Asset requires a valid `AssetId` and a valid `Name`. The
+`AssetId` cannot be empty. The `Name` cannot be null, empty, or
+whitespace-only. A supplied valid name is preserved exactly; it is not
+trimmed, re-cased, or normalised.
+
 Example:
 
     Asset:

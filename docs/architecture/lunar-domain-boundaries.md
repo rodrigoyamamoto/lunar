@@ -62,6 +62,11 @@ Examples:
 The Asset concept represents identity and lifecycle, not implementation
 details.
 
+An Asset carries a required human-readable `Name` that identifies the
+creative entity to humans. The name is domain identity, not a file name,
+storage key, or engine asset path. It cannot be null, empty, or
+whitespace-only. The `AssetId` cannot be empty.
+
 ------------------------------------------------------------------------
 
 ## Artifact

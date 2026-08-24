@@ -18,6 +18,20 @@ public sealed class Asset
         string name,
         AssetType type)
     {
+        if (id.Value == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Asset identifier cannot be empty.",
+                nameof(id));
+        }
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException(
+                "Asset name cannot be null, empty, or whitespace.",
+                nameof(name));
+        }
+
         Id = id;
         Name = name;
         Type = type;

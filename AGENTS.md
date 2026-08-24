@@ -153,6 +153,13 @@ inheritance hierarchy merely to share generation code.
 An Asset is the creative entity, not a file. It contains identity, name, type,
 status, and creation time.
 
+The `Name` is a required human-readable name describing the creative entity. It
+is domain identity, not a file name, storage key, provider identifier, model
+identifier, or engine asset path. It cannot be null, empty, or whitespace-only.
+A supplied valid name is preserved exactly; it is not trimmed, re-cased, or
+normalised. There is no rename operation in the current model. The `AssetId`
+cannot be empty; construction with an empty identifier is rejected.
+
 Allowed status transitions:
 
 ```text
