@@ -101,6 +101,64 @@ Artifacts are outputs, not the source of truth.
 
 The Asset remains the main entity tracked by Lunar.
 
+An Artifact contains:
+
+-   `ArtifactId Id` — the strongly typed identifier.
+-   `AssetId AssetId` — the owning Asset.
+-   `string Name` — a required human-readable name.
+-   `ArtifactType Type` — the kind of artifact.
+-   `WorkflowExecutionId? SourceExecutionId` — the optional Lunar
+    workflow execution that produced this Artifact.
+-   `IReadOnlyList<ArtifactId> SourceArtifactIds` — the direct
+    artifact-to-artifact lineage.
+-   `DateTimeOffset CreatedAt` — the creation time.
+
+## Artifact Provenance and Lineage
+
+An Artifact records two independent dimensions of provenance:
+
+-   `SourceExecutionId` records **which Lunar workflow execution**
+    produced the Artifact, when such an execution exists. It is optional
+    because imported or user-provided artifacts may not originate from a
+    Lunar workflow execution.
+-   `SourceArtifactIds` records **which earlier Artifacts** this
+    Artifact was directly derived from. It is a read-only collection of
+    `ArtifactId` values.
+
+These two dimensions are deliberately independent. An Artifact may have
+a `SourceExecutionId` without any `SourceArtifactIds`, or
+`SourceArtifactIds` without a `SourceExecutionId`, or both, or neither.
+
+## Lineage Semantics
+
+`SourceArtifactIds` records only **direct** provenance. For a chain:
+
+    A → B → C
+
+`B.SourceArtifactIds` contains `A`, and `C.SourceArtifactIds` contains
+`B`. `C` does not automatically include `A`. The transitive chain can be
+reconstructed by following lineage, but the Artifact does not expand it
+transitively.
+
+Lineage invariants:
+
+-   zero sources are valid (an imported or freshly generated artifact);
+-   multiple sources are valid (an artifact derived from several
+    references);
+-   source order is preserved exactly as supplied;
+-   duplicate direct source identifiers are invalid;
+-   empty source identifiers are invalid;
+-   direct self-reference is invalid (an Artifact cannot list its own
+    `Id` as a source);
+-   the source collection cannot be null — an artifact with no known
+    lineage uses an empty collection;
+-   callers cannot mutate the stored lineage through the exposed
+    collection or through the original supplied collection.
+
+Cross-Asset lineage is permitted. An Artifact may list sources belonging
+to a different Asset, because future creative workflows may legitimately
+combine artifacts from different Assets.
+
 ------------------------------------------------------------------------
 
 # Asset Evolution

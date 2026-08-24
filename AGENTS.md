@@ -181,11 +181,22 @@ An Artifact is a concrete output belonging to an Asset. It contains:
 - owning `AssetId`;
 - name and `ArtifactType`;
 - optional `WorkflowExecutionId? SourceExecutionId`;
+- `IReadOnlyList<ArtifactId> SourceArtifactIds` — direct artifact-to-artifact
+  lineage;
 - creation time.
 
 `SourceExecutionId` is optional because imported or user-provided artifacts
 may not originate from a Lunar workflow. Do not add an in-memory Artifact list
 to WorkflowExecution until aggregate and persistence requirements justify it.
+
+`SourceArtifactIds` records direct artifact derivation. It is independent of
+`SourceExecutionId`: an Artifact may have either, both, or neither.
+Invariants: the collection cannot be null (use empty for no lineage); every
+source identifier must be non-empty; duplicates are rejected; direct
+self-reference is rejected; source order is preserved exactly; the stored
+collection is immutable and cannot be mutated through the exposed property or
+the original caller-supplied collection. Cross-Asset lineage is permitted.
+Transitive lineage is not expanded — only direct sources are recorded.
 
 ### Capability
 

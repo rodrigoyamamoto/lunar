@@ -84,6 +84,18 @@ Examples:
 
 An Asset can have multiple Artifacts.
 
+An Artifact records two independent provenance dimensions:
+
+-   `SourceExecutionId` — the optional Lunar workflow execution that
+    produced it.
+-   `SourceArtifactIds` — the direct artifact-to-artifact lineage,
+    identifying which earlier Artifacts this Artifact was derived from.
+
+The two dimensions are independent: an Artifact may have either, both,
+or neither. `SourceArtifactIds` records only direct sources; transitive
+lineage is not expanded. Source order is preserved, duplicates and
+self-references are rejected, and the exposed collection is immutable.
+
 ------------------------------------------------------------------------
 
 ## Workflow

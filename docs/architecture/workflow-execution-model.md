@@ -108,6 +108,13 @@ An Artifact stores an optional `SourceExecutionId` identifying the workflow
 execution that produced it. The relationship is optional because imported or
 user-provided artifacts may not originate from a Lunar workflow execution.
 
+An Artifact also stores `SourceArtifactIds`, a read-only collection of
+direct source `ArtifactId` values identifying earlier Artifacts it was
+derived from. `SourceExecutionId` and `SourceArtifactIds` are
+independent provenance dimensions: an Artifact may have either, both, or
+neither. `SourceArtifactIds` records only direct sources and does not
+expand transitive lineage.
+
 The Workflow Execution does not own an in-memory collection of artifacts in
 this initial model. This keeps persistence and aggregate decisions outside the
 domain until they are required.
