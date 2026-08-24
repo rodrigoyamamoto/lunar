@@ -118,6 +118,12 @@ A Workflow Definition has a stable logical identity
 `(WorkflowDefinitionId, Version)`. Changing a definition creates a new
 immutable version rather than mutating the previous one.
 
+Core owns a persistence contract for Workflow Definitions
+(`IWorkflowDefinitionRepository`) keyed by `(WorkflowDefinitionId, Version)`.
+Infrastructure provides a concrete in-memory adapter
+(`InMemoryWorkflowDefinitionRepository`). The persistence technology remains
+replaceable because Core owns the contract.
+
 ------------------------------------------------------------------------
 
 ## Capability

@@ -193,6 +193,47 @@ This follows ADR-002 Domain Modeling Principles:
 Provider adapters, model selection, and worker contracts are Infrastructure
 concerns that adapt external systems to Core capabilities.
 
+## Persistence Boundary
+
+Core owns a specific persistence contract for Workflow Definitions:
+
+```text
+IWorkflowDefinitionRepository
+```
+
+Its current responsibilities are:
+
+- add an exact immutable definition version if absent;
+- retrieve an exact immutable definition version.
+
+Repository identity is the exact version pair:
+
+```text
+(WorkflowDefinitionId, Version)
+```
+
+`TryAddAsync` returns `true` if the definition was added, `false` if that
+exact identity already exists. An existing historical definition is never
+overwritten. There are no upsert, replace, or save semantics.
+
+`GetAsync` returns the stored definition for an exact identity, or `null`
+if no definition exists for that valid identity. There is no latest,
+current, nearest, or fallback version resolution.
+
+Invalid identity arguments (empty `WorkflowDefinitionId`, version `< 1`)
+are rejected with `ArgumentException`. A `null` result means a valid
+identity was requested but no stored definition exists for it.
+
+Infrastructure provides the first concrete adapter:
+
+```text
+InMemoryWorkflowDefinitionRepository
+```
+
+This is a development/test implementation. It is not a production database
+decision and is not durable. The persistence technology remains
+replaceable because Core owns the contract.
+
 ## Explicitly Deferred Concepts
 
 The following are intentionally out of scope for this slice:
@@ -206,7 +247,7 @@ The following are intentionally out of scope for this slice:
 - model selection;
 - step parameters;
 - retries or checkpoints;
-- persistence or ORM mappings;
+- durable persistence, ORM mappings, or database schema;
 - API endpoints;
 - domain events;
 - dependency injection;

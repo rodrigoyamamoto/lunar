@@ -37,18 +37,21 @@ Implemented:
 - Workflow Execution lifecycle with Asset and Workflow Definition references;
 - Capability domain concept (provider-independent intent);
 - Workflow Definition composed of ordered Capability steps;
+- Workflow Definition versioning with immutable `(WorkflowDefinitionId, Version)` identity;
+- `IWorkflowDefinitionRepository` Core persistence contract;
+- `InMemoryWorkflowDefinitionRepository` Infrastructure adapter;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
+- Infrastructure repository tests;
 - repository and project boundaries.
 
 Still scaffolding or intentionally absent:
 
 - API endpoints beyond the template root endpoint;
-- persistence and database mappings;
+- durable persistence, database mappings, and ORM;
 - provider adapters;
 - worker contracts and worker implementations;
 - workflow scheduling, retries, and orchestration engine;
-- workflow definition versioning;
 - runtime configuration implementations;
 - production frontend—the current UI is the Vite/React starter;
 - integration tests.
@@ -79,11 +82,13 @@ backend/
       Workflows/
       Capabilities/        Provider-independent capability concepts
       Workers/             Placeholder
-    Lunar.Infrastructure/  Technical implementations; currently placeholders
+    Lunar.Infrastructure/  Technical implementations
+      Persistence/         In-memory workflow definition repository
     Lunar.Api/             Composition/API boundary; currently template only
   tests/
     Lunar.Tests/
-      Unit/                Current test suite
+      Unit/                Core domain unit tests
+      Infrastructure/      Infrastructure adapter tests
       Integration/         Placeholder
 
 frontend/                  React/Vite starter application
@@ -105,6 +110,7 @@ Lunar.Api ───────────────> Lunar.Core
     └──────> Lunar.Infrastructure ───────> Lunar.Core
 
 Lunar.Tests ─────────────> Lunar.Core
+Lunar.Tests ─────────────> Lunar.Infrastructure
 Lunar.Core ──────────────> no Lunar project and no external technology
 ```
 
@@ -232,6 +238,15 @@ unique. See ADR-004 for the versioning decision.
 
 Workflow Definitions do not contain provider implementations, parameters,
 retry policies, status, or execution behaviour.
+
+Core owns `IWorkflowDefinitionRepository`, a persistence contract keyed by
+`(WorkflowDefinitionId, Version)`. `TryAddAsync` inserts an exact immutable
+definition if absent (returns `false` if the exact identity already exists;
+never overwrites). `GetAsync` retrieves an exact version or returns `null`.
+Invalid identity arguments are rejected with `ArgumentException`.
+Infrastructure provides `InMemoryWorkflowDefinitionRepository` as a
+development/test adapter. No durable persistence, ORM, or database is
+present.
 
 ### Workflow Execution
 
