@@ -9,6 +9,8 @@ public sealed class WorkflowDefinition
 
     public WorkflowDefinitionId Id { get; }
 
+    public int Version { get; }
+
     public string Name { get; }
 
     public IReadOnlyList<WorkflowStep> Steps => _steps;
@@ -18,6 +20,7 @@ public sealed class WorkflowDefinition
 
     public WorkflowDefinition(
         WorkflowDefinitionId id,
+        int version,
         string name,
         IEnumerable<WorkflowStep> steps)
     {
@@ -26,6 +29,13 @@ public sealed class WorkflowDefinition
             throw new ArgumentException(
                 "Workflow definition identifier cannot be empty.",
                 nameof(id));
+        }
+
+        if (version < 1)
+        {
+            throw new ArgumentException(
+                "Workflow definition version must be a positive integer.",
+                nameof(version));
         }
 
         if (string.IsNullOrWhiteSpace(name))
@@ -51,6 +61,7 @@ public sealed class WorkflowDefinition
         _steps = stepList.AsReadOnly();
 
         Id = id;
+        Version = version;
         Name = name;
         CreatedAt = DateTimeOffset.UtcNow;
     }

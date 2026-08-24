@@ -65,9 +65,14 @@ Infrastructure concerns.
 
 A Workflow Definition represents a reusable ordered process.
 
+`WorkflowDefinitionId` is the stable logical identity of a reusable
+workflow across versions. The exact immutable definition version is
+identified by the pair `(WorkflowDefinitionId, Version)`.
+
 It contains:
 
-- `WorkflowDefinitionId Id`
+- `WorkflowDefinitionId Id` — stable logical identity across versions.
+- `int Version` — a positive immutable version number scoped to `Id`.
 - `string Name`
 - `IReadOnlyList<WorkflowStep> Steps`
 - `DateTimeOffset CreatedAt`
@@ -75,6 +80,7 @@ It contains:
 Invariants:
 
 - the identifier cannot be empty;
+- the version must be a positive integer (`>= 1`);
 - the name cannot be null, empty, or whitespace;
 - at least one step is required;
 - step positions must be unique;
@@ -83,13 +89,23 @@ Invariants:
 - callers cannot mutate the internal step collection through a returned list
   reference.
 
+Version numbers are scoped to a `WorkflowDefinitionId` and are not
+globally unique. The Core does not enforce contiguity, latest-version
+resolution, or version-sequence allocation — those are future
+persistence/application concerns.
+
+A Workflow Definition is immutable. Changing definition contents creates
+another immutable version with the same `WorkflowDefinitionId` and a new
+positive `Version`, rather than mutating the previous version. There is
+no `CreateNextVersion`, `IncrementVersion`, or mutation method on the
+domain model.
+
 A Workflow Definition does **not** contain:
 
 - provider implementations or model selection;
 - step parameters, retry policies, or execution behaviour;
 - status, runtime lifecycle timestamps such as `StartedAt` or `CompletedAt`, or
-  other runtime information;
-- versioning (deferred).
+  other runtime information.
 
 ## Workflow Step
 
@@ -119,22 +135,40 @@ The intended traceability chain after this slice is:
 ```text
 Asset
   ↑
-WorkflowExecution ──> WorkflowDefinition ──> ordered WorkflowSteps
-  ↑                                            │
-Artifact                                  Capability
+WorkflowExecution
+  │
+  ├── WorkflowDefinitionId
+  └── WorkflowDefinitionVersion
+             │
+             ▼
+exact WorkflowDefinition version
+             │
+             ▼
+ordered WorkflowSteps
+             │
+             ▼
+Capability
+  ↑
+Artifact.SourceExecutionId
 ```
 
 - An **Asset** is the creative entity being produced.
 - A **Workflow Execution** is one attempt to run a generation process. Every
   execution references:
   - the `AssetId` being processed;
-  - the `WorkflowDefinitionId` being executed.
+  - the `WorkflowDefinitionId` being executed;
+  - the `WorkflowDefinitionVersion` identifying the exact immutable definition
+    version. This permits an execution to continue referring to the exact
+    historical definition even after later versions are introduced.
 - A **Workflow Definition** is a reusable ordered sequence of Workflow Steps,
-  each referencing a Capability.
+  each referencing a Capability. Its logical identity is `WorkflowDefinitionId`;
+  its exact version identity is `(WorkflowDefinitionId, Version)`.
 - An **Artifact** is a concrete output belonging to an Asset. An Artifact
   stores an optional `SourceExecutionId` identifying the Workflow Execution
   that produced it. The identifier is optional because imported or
   user-provided artifacts may not originate from a Lunar workflow execution.
+  An Artifact also stores `SourceArtifactIds` recording direct
+  artifact-to-artifact lineage.
 - A **Capability** is a provider-independent description of something Lunar can
   do.
 
@@ -166,7 +200,8 @@ The following are intentionally out of scope for this slice:
 - workflow execution engine;
 - scheduler or queue;
 - workflow templates separate from definitions;
-- workflow definition versioning;
+- version-sequence allocation and contiguity enforcement (persistence concern);
+- latest/current/active/published version resolution;
 - providers or provider interfaces;
 - model selection;
 - step parameters;

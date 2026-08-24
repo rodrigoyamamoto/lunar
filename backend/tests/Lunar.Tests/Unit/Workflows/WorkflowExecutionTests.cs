@@ -1,10 +1,14 @@
 using Lunar.Core.Assets;
+using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 
 namespace Lunar.Tests.Unit.Workflows;
 
 public class WorkflowExecutionTests
 {
+    private const int DefaultDefinitionVersion = 1;
+
+
     [Fact]
     public void Create_ShouldStartWithCreatedStatus()
     {
@@ -22,7 +26,8 @@ public class WorkflowExecutionTests
 
         var execution = WorkflowExecution.Create(
             assetId,
-            WorkflowDefinitionId.New());
+            WorkflowDefinitionId.New(),
+            DefaultDefinitionVersion);
 
         Assert.Equal(assetId, execution.AssetId);
     }
@@ -34,9 +39,65 @@ public class WorkflowExecutionTests
 
         var execution = WorkflowExecution.Create(
             AssetId.New(),
-            definitionId);
+            definitionId,
+            DefaultDefinitionVersion);
 
         Assert.Equal(definitionId, execution.WorkflowDefinitionId);
+    }
+
+    [Fact]
+    public void Create_ShouldPreserveSuppliedWorkflowDefinitionVersion()
+    {
+        var execution = WorkflowExecution.Create(
+            AssetId.New(),
+            WorkflowDefinitionId.New(),
+            2);
+
+        Assert.Equal(2, execution.WorkflowDefinitionVersion);
+    }
+
+    [Fact]
+    public void Create_ShouldAcceptVersionOne()
+    {
+        var execution = WorkflowExecution.Create(
+            AssetId.New(),
+            WorkflowDefinitionId.New(),
+            1);
+
+        Assert.Equal(1, execution.WorkflowDefinitionVersion);
+    }
+
+    [Fact]
+    public void Create_ShouldAcceptHigherVersion()
+    {
+        var execution = WorkflowExecution.Create(
+            AssetId.New(),
+            WorkflowDefinitionId.New(),
+            5);
+
+        Assert.Equal(5, execution.WorkflowDefinitionVersion);
+    }
+
+    [Fact]
+    public void Create_ShouldRejectVersionZero()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Create(
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                0));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(-5)]
+    public void Create_ShouldRejectNegativeVersion(int version)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Create(
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                version));
     }
 
     [Fact]
@@ -45,7 +106,8 @@ public class WorkflowExecutionTests
         Assert.Throws<ArgumentException>(() =>
             WorkflowExecution.Create(
                 new AssetId(Guid.Empty),
-                WorkflowDefinitionId.New()));
+                WorkflowDefinitionId.New(),
+                DefaultDefinitionVersion));
     }
 
     [Fact]
@@ -54,7 +116,31 @@ public class WorkflowExecutionTests
         Assert.Throws<ArgumentException>(() =>
             WorkflowExecution.Create(
                 AssetId.New(),
-                new WorkflowDefinitionId(Guid.Empty)));
+                new WorkflowDefinitionId(Guid.Empty),
+                DefaultDefinitionVersion));
+    }
+
+
+    [Fact]
+    public void HistoricalReferenceStability_ExecutionRetainsExactVersion()
+    {
+        var definitionId = WorkflowDefinitionId.New();
+
+        var execution = WorkflowExecution.Create(
+            AssetId.New(),
+            definitionId,
+            1);
+
+        // A later version of the same logical workflow is constructed.
+        // The execution must still reference version 1.
+        _ = new WorkflowDefinition(
+            definitionId,
+            2,
+            "Generate Character Enhanced",
+            new[] { new WorkflowStep(1, CapabilityId.New()) });
+
+        Assert.Equal(definitionId, execution.WorkflowDefinitionId);
+        Assert.Equal(1, execution.WorkflowDefinitionVersion);
     }
 
 
@@ -155,6 +241,7 @@ public class WorkflowExecutionTests
     {
         return WorkflowExecution.Create(
             AssetId.New(),
-            WorkflowDefinitionId.New());
+            WorkflowDefinitionId.New(),
+            DefaultDefinitionVersion);
     }
 }

@@ -8,11 +8,13 @@ public sealed class WorkflowExecution
         WorkflowExecutionId id,
         AssetId assetId,
         WorkflowDefinitionId workflowDefinitionId,
+        int workflowDefinitionVersion,
         DateTimeOffset createdAt)
     {
         Id = id;
         AssetId = assetId;
         WorkflowDefinitionId = workflowDefinitionId;
+        WorkflowDefinitionVersion = workflowDefinitionVersion;
         CreatedAt = createdAt;
         Status = WorkflowExecutionStatus.Created;
     }
@@ -22,6 +24,8 @@ public sealed class WorkflowExecution
     public AssetId AssetId { get; }
 
     public WorkflowDefinitionId WorkflowDefinitionId { get; }
+
+    public int WorkflowDefinitionVersion { get; }
 
     public WorkflowExecutionStatus Status { get; private set; }
 
@@ -34,7 +38,8 @@ public sealed class WorkflowExecution
 
     public static WorkflowExecution Create(
         AssetId assetId,
-        WorkflowDefinitionId workflowDefinitionId)
+        WorkflowDefinitionId workflowDefinitionId,
+        int workflowDefinitionVersion)
     {
         if (assetId.Value == Guid.Empty)
         {
@@ -50,10 +55,18 @@ public sealed class WorkflowExecution
                 nameof(workflowDefinitionId));
         }
 
+        if (workflowDefinitionVersion < 1)
+        {
+            throw new ArgumentException(
+                "Workflow definition version must be a positive integer.",
+                nameof(workflowDefinitionVersion));
+        }
+
         return new WorkflowExecution(
             WorkflowExecutionId.New(),
             assetId,
             workflowDefinitionId,
+            workflowDefinitionVersion,
             DateTimeOffset.UtcNow);
     }
 

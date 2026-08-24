@@ -112,6 +112,12 @@ A workflow may contain:
 
 The user should not need to manually understand every internal step.
 
+A Workflow Definition has a stable logical identity
+(`WorkflowDefinitionId`) and an immutable positive version number
+(`Version`). The exact definition version is identified by
+`(WorkflowDefinitionId, Version)`. Changing a definition creates a new
+immutable version rather than mutating the previous one.
+
 ------------------------------------------------------------------------
 
 ## Capability
@@ -142,6 +148,11 @@ Examples:
 -   generating a character
 -   processing a mesh
 -   exporting Unreal assets
+
+A Workflow Execution references the exact immutable definition version
+via `WorkflowDefinitionId` and `WorkflowDefinitionVersion`, so an
+execution continues to refer to the historical definition it was created
+against even after later versions are introduced.
 
 Execution contains lifecycle information:
 

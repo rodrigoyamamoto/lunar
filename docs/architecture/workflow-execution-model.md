@@ -63,12 +63,18 @@ Responsibilities:
 Every Workflow Execution references:
 
 -   `AssetId AssetId` — the Asset being processed.
--   `WorkflowDefinitionId WorkflowDefinitionId` — the Workflow Definition being
-    executed.
+-   `WorkflowDefinitionId WorkflowDefinitionId` — the logical Workflow
+    Definition being executed.
+-   `int WorkflowDefinitionVersion` — the exact immutable version of that
+    definition. This permits an execution to continue referring to the
+    exact historical definition even after later versions are introduced.
 
-An execution cannot be created without both identifiers. See the
+An execution cannot be created without all three values. The version must
+be a positive integer (`>= 1`). See the
 [Workflow Definition Model](./workflow-definition-model.md) for the definition
-and capability concepts.
+and capability concepts, and
+[ADR-004](../decisions/ADR-004-workflow-definition-versioning.md) for the
+versioning decision.
 
 ### Workflow Execution Status
 
@@ -114,6 +120,12 @@ derived from. `SourceExecutionId` and `SourceArtifactIds` are
 independent provenance dimensions: an Artifact may have either, both, or
 neither. `SourceArtifactIds` records only direct sources and does not
 expand transitive lineage.
+
+Because a Workflow Execution now references the exact definition version
+via `(WorkflowDefinitionId, WorkflowDefinitionVersion)`, the full
+traceability chain from an Artifact to the exact immutable Workflow
+Definition version — and its ordered Workflow Steps and Capabilities —
+is preserved without duplicating definition provenance onto the Artifact.
 
 The Workflow Execution does not own an in-memory collection of artifacts in
 this initial model. This keeps persistence and aggregate decisions outside the

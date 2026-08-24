@@ -125,6 +125,7 @@ Read these before changing the related area:
 - `docs/decisions/ADR-001-foundation.md` — technology and foundation boundaries
 - `docs/decisions/ADR-002-domain-modeling-principles.md` — domain design rules
 - `docs/decisions/ADR-003-package-management.md` — central NuGet versions
+- `docs/decisions/ADR-004-workflow-definition-versioning.md` — workflow definition version identity
 - `docs/architecture/lunar-domain-boundaries.md` — ownership and dependency map
 - `docs/architecture/asset-lifecycle-model.md` — Asset and Artifact semantics
 - `docs/architecture/workflow-execution-model.md` — execution lifecycle
@@ -208,9 +209,13 @@ not carry provider, model, endpoint, or configuration information.
 
 A Workflow Definition is a reusable ordered process composed of Workflow
 Steps. Each step references a `CapabilityId` and has a one-based position.
+`WorkflowDefinitionId` is the stable logical identity across versions; the
+exact immutable version is identified by `(WorkflowDefinitionId, Version)`.
 
 Invariants:
 
+- `WorkflowDefinitionId` cannot be empty;
+- `Version` must be a positive integer (`>= 1`);
 - at least one step is required;
 - step positions must be unique;
 - positions must form a contiguous sequence beginning at 1;
@@ -218,6 +223,12 @@ Invariants:
 - Workflow Definition preserves that declared order and does not sort or
   normalize the collection;
 - the returned step collection is read-only.
+
+Definitions are immutable. Changing contents creates a new immutable version
+with the same `WorkflowDefinitionId` and a new positive `Version`. There is no
+mutation method, `CreateNextVersion`, or version-sequence allocation in Core.
+Version numbers are scoped to a `WorkflowDefinitionId` and are not globally
+unique. See ADR-004 for the versioning decision.
 
 Workflow Definitions do not contain provider implementations, parameters,
 retry policies, status, or execution behaviour.
@@ -228,9 +239,14 @@ A Workflow Execution is one attempt to run a generation process. Every
 execution references:
 
 - `AssetId AssetId` — the Asset being processed;
-- `WorkflowDefinitionId WorkflowDefinitionId` — the definition being executed.
+- `WorkflowDefinitionId WorkflowDefinitionId` — the logical definition being
+  executed;
+- `int WorkflowDefinitionVersion` — the exact immutable definition version.
 
-An execution cannot be created without both identifiers.
+An execution cannot be created without all three values. The version must be
+a positive integer (`>= 1`). An execution continues to refer to the exact
+historical definition version even after later versions are introduced; there
+is no latest/current/active version resolution in Core.
 
 ```text
 Created ──> Running ──> Completed
