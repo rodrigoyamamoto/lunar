@@ -1,0 +1,113 @@
+# Workflow Execution Model
+
+## Status
+
+Draft
+
+## Purpose
+
+This document defines the initial workflow execution model for Lunar
+Asset Studio.
+
+The goal is to represent the execution journey that transforms user
+intent into generated assets without introducing a complete workflow
+engine prematurely.
+
+## Context
+
+Lunar Asset Studio will orchestrate multiple specialized capabilities:
+
+-   image generation
+-   model generation
+-   validation
+-   rigging
+-   optimization
+-   export preparation
+
+Each capability may be provided by different implementations or
+providers.
+
+The workflow model must represent execution history and produced
+artifacts while remaining independent from specific tools or vendors.
+
+## Decision
+
+The first version introduces the concept of a Workflow Execution.
+
+A Workflow Execution represents a single attempt to execute a generation
+process.
+
+It does not represent:
+
+-   a workflow designer
+-   a visual node editor
+-   a scheduler
+-   a distributed workflow engine
+
+Those capabilities may be introduced later if required.
+
+## Core Concepts
+
+### Workflow Execution
+
+Represents one execution instance.
+
+Responsibilities:
+
+-   identify the execution
+-   track lifecycle status
+-   provide traceability
+
+### Workflow Execution Status
+
+Initial statuses:
+
+-   Created
+-   Running
+-   Completed
+-   Failed
+-   Cancelled
+
+The model should evolve only when real requirements appear.
+
+## Relationship With Artifacts
+
+Workflow executions produce artifacts.
+
+Example:
+
+User request:
+
+"Create a dark fantasy warrior"
+
+Execution:
+
+    WorkflowExecution
+        |
+        +-- Concept Image Artifact
+        |
+        +-- Generated Model Artifact
+        |
+        +-- Rigged Model Artifact
+
+Artifacts remain independent domain entities.
+
+## Future Evolution
+
+Possible future concepts:
+
+-   workflow templates
+-   workflow steps
+-   retries
+-   checkpoints
+-   resumable executions
+-   provider selection
+
+These are intentionally not part of the first implementation.
+
+## Principles
+
+-   Keep domain models simple.
+-   Avoid premature abstraction.
+-   Avoid coupling with external providers.
+-   Prefer explicit models over generic frameworks.
