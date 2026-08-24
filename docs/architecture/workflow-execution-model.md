@@ -68,9 +68,17 @@ Every Workflow Execution references:
 -   `int WorkflowDefinitionVersion` — the exact immutable version of that
     definition. This permits an execution to continue referring to the
     exact historical definition even after later versions are introduced.
+-   `long Revision` — persistence-state revision for optimistic concurrency.
+    This is distinct from `WorkflowDefinitionVersion`: the definition version
+    identifies the exact immutable process definition, while `Revision`
+    protects mutable execution persistence from stale concurrent writes.
+    Initial value is `0`; each successful persisted update increments it by
+    one. Lifecycle methods (`Start`, `Complete`, `Fail`, `Cancel`) do not
+    change `Revision`; only repository persistence determines the next
+    stored revision.
 
-An execution cannot be created without all three values. The version must
-be a positive integer (`>= 1`). See the
+An execution cannot be created without all three reference values. The
+version must be a positive integer (`>= 1`). See the
 [Workflow Definition Model](./workflow-definition-model.md) for the definition
 and capability concepts, and
 [ADR-004](../decisions/ADR-004-workflow-definition-versioning.md) for the
@@ -130,6 +138,71 @@ is preserved without duplicating definition provenance onto the Artifact.
 The Workflow Execution does not own an in-memory collection of artifacts in
 this initial model. This keeps persistence and aggregate decisions outside the
 domain until they are required.
+
+## Persistence Boundary
+
+Core owns a specific persistence contract for Workflow Executions:
+
+```text
+IWorkflowExecutionRepository
+```
+
+Its current responsibilities are:
+
+-   add a new execution (`TryAddAsync`);
+-   retrieve an execution by `WorkflowExecutionId` (`GetAsync`);
+-   persist a lifecycle change using expected `Revision`
+    (`TryUpdateAsync`).
+
+Repository identity is `WorkflowExecutionId`. `TryAddAsync` accepts only
+executions with `Revision = 0` and rejects duplicate IDs without
+overwriting. `GetAsync` returns `null` for a valid but unknown ID.
+`TryUpdateAsync` uses optimistic concurrency: `expectedRevision` must
+match the stored `Revision`. A successful state-changing update increments
+`Revision` by one and returns the persisted execution. A stale update
+returns `null` without modifying stored state. A no-op update (identical
+lifecycle state) returns the current persisted execution without
+incrementing `Revision`.
+
+Immutable fields (`Id`, `AssetId`, `WorkflowDefinitionId`,
+`WorkflowDefinitionVersion`, `CreatedAt`) cannot be changed through
+`TryUpdateAsync`; attempts are rejected with `ArgumentException`. Invalid
+lifecycle transitions (e.g. `Running` → `Created`, `Completed` →
+`Running`) are also rejected with `ArgumentException`.
+
+The in-memory adapter stores and returns isolated snapshots reconstructed
+via `WorkflowExecution.Rehydrate`. Mutation of a caller's original object,
+a retrieved object, or a previously updated object does not affect stored
+repository state. Only a successful `TryUpdateAsync` changes persisted
+state.
+
+Infrastructure provides the first concrete adapter:
+
+```text
+InMemoryWorkflowExecutionRepository
+```
+
+This is a development/test implementation. It is not a production database
+decision and is not durable.
+
+## Rehydration
+
+`WorkflowExecution.Rehydrate` is a narrowly scoped reconstruction factory
+for persistence. It accepts all persisted fields including `Revision` and
+validates structural invariants:
+
+-   `WorkflowExecutionId` cannot be empty;
+-   `AssetId` cannot be empty;
+-   `WorkflowDefinitionId` cannot be empty;
+-   `WorkflowDefinitionVersion >= 1`;
+-   `Revision >= 0`;
+-   status/timestamp coherence:
+    -   `Created`: `StartedAt = null`, `CompletedAt = null`;
+    -   `Running`: `StartedAt != null`, `CompletedAt = null`;
+    -   terminal (`Completed`/`Failed`/`Cancelled`): both
+        `StartedAt != null` and `CompletedAt != null`.
+
+It does not act as an unrestricted backdoor to invalid lifecycle states.
 
 ## Future Evolution
 

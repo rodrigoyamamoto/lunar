@@ -237,6 +237,343 @@ public class WorkflowExecutionTests
     }
 
 
+    [Fact]
+    public void Create_ShouldInitializeRevisionToZero()
+    {
+        var execution = CreateExecution();
+
+        Assert.Equal(0, execution.Revision);
+    }
+
+
+    [Fact]
+    public void Start_ShouldNotIncrementRevision()
+    {
+        var execution = CreateExecution();
+
+        execution.Start();
+
+        Assert.Equal(0, execution.Revision);
+    }
+
+
+    [Fact]
+    public void Complete_ShouldNotIncrementRevision()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+
+        execution.Complete();
+
+        Assert.Equal(0, execution.Revision);
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldReconstructValidCreatedState()
+    {
+        var id = WorkflowExecutionId.New();
+        var assetId = AssetId.New();
+        var definitionId = WorkflowDefinitionId.New();
+        var createdAt = DateTimeOffset.UtcNow;
+
+        var execution = WorkflowExecution.Rehydrate(
+            id,
+            assetId,
+            definitionId,
+            1,
+            WorkflowExecutionStatus.Created,
+            0,
+            createdAt,
+            null,
+            null);
+
+        Assert.Equal(id, execution.Id);
+        Assert.Equal(assetId, execution.AssetId);
+        Assert.Equal(definitionId, execution.WorkflowDefinitionId);
+        Assert.Equal(1, execution.WorkflowDefinitionVersion);
+        Assert.Equal(WorkflowExecutionStatus.Created, execution.Status);
+        Assert.Equal(0, execution.Revision);
+        Assert.Equal(createdAt, execution.CreatedAt);
+        Assert.Null(execution.StartedAt);
+        Assert.Null(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldReconstructValidRunningState()
+    {
+        var startedAt = DateTimeOffset.UtcNow;
+
+        var execution = WorkflowExecution.Rehydrate(
+            WorkflowExecutionId.New(),
+            AssetId.New(),
+            WorkflowDefinitionId.New(),
+            1,
+            WorkflowExecutionStatus.Running,
+            3,
+            DateTimeOffset.UtcNow,
+            startedAt,
+            null);
+
+        Assert.Equal(WorkflowExecutionStatus.Running, execution.Status);
+        Assert.Equal(3, execution.Revision);
+        Assert.Equal(startedAt, execution.StartedAt);
+        Assert.Null(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldReconstructValidCompletedState()
+    {
+        var startedAt = DateTimeOffset.UtcNow;
+        var completedAt = startedAt.AddMinutes(5);
+
+        var execution = WorkflowExecution.Rehydrate(
+            WorkflowExecutionId.New(),
+            AssetId.New(),
+            WorkflowDefinitionId.New(),
+            1,
+            WorkflowExecutionStatus.Completed,
+            7,
+            DateTimeOffset.UtcNow,
+            startedAt,
+            completedAt);
+
+        Assert.Equal(WorkflowExecutionStatus.Completed, execution.Status);
+        Assert.Equal(7, execution.Revision);
+        Assert.Equal(startedAt, execution.StartedAt);
+        Assert.Equal(completedAt, execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldReconstructValidFailedState()
+    {
+        var execution = WorkflowExecution.Rehydrate(
+            WorkflowExecutionId.New(),
+            AssetId.New(),
+            WorkflowDefinitionId.New(),
+            1,
+            WorkflowExecutionStatus.Failed,
+            2,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal(WorkflowExecutionStatus.Failed, execution.Status);
+        Assert.Equal(2, execution.Revision);
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldReconstructValidCancelledState()
+    {
+        var execution = WorkflowExecution.Rehydrate(
+            WorkflowExecutionId.New(),
+            AssetId.New(),
+            WorkflowDefinitionId.New(),
+            1,
+            WorkflowExecutionStatus.Cancelled,
+            2,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal(WorkflowExecutionStatus.Cancelled, execution.Status);
+        Assert.Equal(2, execution.Revision);
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectEmptyExecutionId()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                new WorkflowExecutionId(Guid.Empty),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                WorkflowExecutionStatus.Created,
+                0,
+                DateTimeOffset.UtcNow,
+                null,
+                null));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectEmptyAssetId()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                new AssetId(Guid.Empty),
+                WorkflowDefinitionId.New(),
+                1,
+                WorkflowExecutionStatus.Created,
+                0,
+                DateTimeOffset.UtcNow,
+                null,
+                null));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectEmptyWorkflowDefinitionId()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                new WorkflowDefinitionId(Guid.Empty),
+                1,
+                WorkflowExecutionStatus.Created,
+                0,
+                DateTimeOffset.UtcNow,
+                null,
+                null));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectInvalidDefinitionVersion()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                0,
+                WorkflowExecutionStatus.Created,
+                0,
+                DateTimeOffset.UtcNow,
+                null,
+                null));
+    }
+
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(-5)]
+    public void Rehydrate_ShouldRejectNegativeRevision(long revision)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                WorkflowExecutionStatus.Created,
+                revision,
+                DateTimeOffset.UtcNow,
+                null,
+                null));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectCreatedWithStartedAt()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                WorkflowExecutionStatus.Created,
+                0,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow,
+                null));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectCreatedWithCompletedAt()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                WorkflowExecutionStatus.Created,
+                0,
+                DateTimeOffset.UtcNow,
+                null,
+                DateTimeOffset.UtcNow));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectRunningWithoutStartedAt()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                WorkflowExecutionStatus.Running,
+                1,
+                DateTimeOffset.UtcNow,
+                null,
+                null));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectRunningWithCompletedAt()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                WorkflowExecutionStatus.Running,
+                1,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectTerminalWithoutStartedAt()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                WorkflowExecutionStatus.Completed,
+                1,
+                DateTimeOffset.UtcNow,
+                null,
+                DateTimeOffset.UtcNow));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectTerminalWithoutCompletedAt()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                WorkflowExecutionStatus.Completed,
+                1,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow,
+                null));
+    }
+
+
     private static WorkflowExecution CreateExecution()
     {
         return WorkflowExecution.Create(

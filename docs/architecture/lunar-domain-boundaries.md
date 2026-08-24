@@ -160,6 +160,19 @@ via `WorkflowDefinitionId` and `WorkflowDefinitionVersion`, so an
 execution continues to refer to the historical definition it was created
 against even after later versions are introduced.
 
+A Workflow Execution also carries a `Revision` for optimistic concurrency
+in persistence. This is distinct from `WorkflowDefinitionVersion`:
+`WorkflowDefinitionVersion` identifies the exact immutable process
+definition, while `Revision` protects mutable execution persistence from
+stale concurrent writes.
+
+Core owns a persistence contract for Workflow Executions
+(`IWorkflowExecutionRepository`) keyed by `WorkflowExecutionId`.
+`TryUpdateAsync` uses expected `Revision` for optimistic concurrency.
+Infrastructure provides a concrete in-memory adapter
+(`InMemoryWorkflowExecutionRepository`). The persistence technology remains
+replaceable because Core owns the contract.
+
 Execution contains lifecycle information:
 
 -   created

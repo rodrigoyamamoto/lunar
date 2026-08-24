@@ -39,7 +39,10 @@ Implemented:
 - Workflow Definition composed of ordered Capability steps;
 - Workflow Definition versioning with immutable `(WorkflowDefinitionId, Version)` identity;
 - `IWorkflowDefinitionRepository` Core persistence contract;
+- `IWorkflowExecutionRepository` Core persistence contract with optimistic concurrency;
 - `InMemoryWorkflowDefinitionRepository` Infrastructure adapter;
+- `InMemoryWorkflowExecutionRepository` Infrastructure adapter;
+- `WorkflowExecution.Rehydrate` persistence reconstruction factory;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
 - Infrastructure repository tests;
@@ -256,12 +259,16 @@ execution references:
 - `AssetId AssetId` — the Asset being processed;
 - `WorkflowDefinitionId WorkflowDefinitionId` — the logical definition being
   executed;
-- `int WorkflowDefinitionVersion` — the exact immutable definition version.
+- `int WorkflowDefinitionVersion` — the exact immutable definition version;
+- `long Revision` — persistence-state revision for optimistic concurrency,
+  distinct from `WorkflowDefinitionVersion`.
 
-An execution cannot be created without all three values. The version must be
-a positive integer (`>= 1`). An execution continues to refer to the exact
-historical definition version even after later versions are introduced; there
-is no latest/current/active version resolution in Core.
+An execution cannot be created without all three reference values. The version
+must be a positive integer (`>= 1`). An execution continues to refer to the
+exact historical definition version even after later versions are introduced;
+there is no latest/current/active version resolution in Core. `Revision`
+starts at `0` on creation; lifecycle methods do not change it; only
+repository persistence determines the next stored revision.
 
 ```text
 Created ──> Running ──> Completed
@@ -272,6 +279,24 @@ Created ──> Running ──> Completed
 Invalid transition requests currently leave the state unchanged. Terminal
 states cannot restart. Workflow Execution does not execute the definition; it
 does not yet model retries, scheduling, or an orchestration engine.
+
+`WorkflowExecution.Rehydrate` is a narrowly scoped reconstruction factory for
+persistence. It accepts all persisted fields including `Revision` and
+validates structural invariants and status/timestamp coherence. It does not
+act as an unrestricted backdoor to invalid lifecycle states.
+
+Core owns `IWorkflowExecutionRepository`, a persistence contract keyed by
+`WorkflowExecutionId`. `TryAddAsync` accepts only executions with
+`Revision = 0` and rejects duplicate IDs. `GetAsync` retrieves by ID or
+returns `null`. `TryUpdateAsync` uses optimistic concurrency:
+`expectedRevision` must match the stored `Revision`; a successful
+state-changing update increments `Revision` by one; a stale update returns
+`null`; a no-op returns current state without incrementing. Immutable fields
+cannot be changed through update. Invalid lifecycle transitions are rejected.
+Infrastructure provides `InMemoryWorkflowExecutionRepository` as a
+development/test adapter with snapshot isolation — stored and returned
+objects are isolated copies, so mutating a caller's object does not affect
+repository state.
 
 ## Design Rules
 
