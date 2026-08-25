@@ -275,24 +275,32 @@ It does not act as an unrestricted backdoor to invalid lifecycle states.
 The Application layer coordinates workflow execution creation through
 `ExecuteWorkflowService`. The service:
 
+-   resolves the referenced Asset through `IAssetRepository` (returns
+    `AssetNotFound` if missing);
 -   retrieves the exact Workflow Definition version through
-    `IWorkflowDefinitionRepository`;
+    `IWorkflowDefinitionRepository` (returns `WorkflowDefinitionNotFound`
+    if missing);
 -   creates a `WorkflowExecution` through the domain `Create` factory;
--   persists the new execution through `IWorkflowExecutionRepository`;
+-   persists the new execution through `IWorkflowExecutionRepository`
+    (returns `WorkflowExecutionPersistenceFailed` if rejected);
 -   returns a `Result<WorkflowExecution>` outcome.
 
-The service does not own domain invariants, lifecycle transitions, or
-persistence mechanics. It does not duplicate domain validation — input
-validation is delegated to the domain `Create` factory and repository
-contracts. It does not introduce CQRS.
+The service requires the referenced Asset to exist before creating a
+Workflow Execution. A structurally valid `AssetId` that does not
+correspond to a persisted Asset is an expected use-case failure, not a
+domain exception. The service does not own domain invariants, lifecycle
+transitions, or persistence mechanics. It does not duplicate domain
+validation — input validation is delegated to the domain `Create`
+factory and repository contracts. It does not introduce CQRS.
 
 Expected use-case failures are returned as `Result` failures, not
-thrown. `WorkflowDefinitionNotFound` is returned when the requested
-definition version does not exist.
-`WorkflowExecutionPersistenceFailed` is returned when the repository
-rejects insertion. Invalid caller/programmer usage (null dependencies,
-invalid domain construction) remains exception-based. Core does not
-depend on `Result` or any Application concern.
+thrown. `AssetNotFound` is returned when the referenced Asset does not
+exist. `WorkflowDefinitionNotFound` is returned when the requested
+definition version does not exist. `WorkflowExecutionPersistenceFailed`
+is returned when the repository rejects insertion. Invalid
+caller/programmer usage (null dependencies, invalid domain construction)
+remains exception-based. Core does not depend on `Result` or any
+Application concern.
 
 ## Future Evolution
 

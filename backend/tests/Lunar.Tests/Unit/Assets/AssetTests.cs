@@ -95,4 +95,54 @@ public class AssetTests
 
         Assert.Equal(name, asset.Name);
     }
+
+
+    [Fact]
+    public void Rehydrate_ShouldReconstructAllFields()
+    {
+        var id = AssetId.New();
+        var createdAt = DateTimeOffset.UtcNow;
+
+        var asset = Asset.Rehydrate(
+            id,
+            "Test Character",
+            AssetType.Character,
+            AssetStatus.Completed,
+            createdAt);
+
+        Assert.Equal(id, asset.Id);
+        Assert.Equal("Test Character", asset.Name);
+        Assert.Equal(AssetType.Character, asset.Type);
+        Assert.Equal(AssetStatus.Completed, asset.Status);
+        Assert.Equal(createdAt, asset.CreatedAt);
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectEmptyId()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            Asset.Rehydrate(
+                new AssetId(Guid.Empty),
+                "Test Character",
+                AssetType.Character,
+                AssetStatus.Draft,
+                DateTimeOffset.UtcNow));
+    }
+
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Rehydrate_ShouldRejectBlankName(string? name)
+    {
+        Assert.Throws<ArgumentException>(() =>
+            Asset.Rehydrate(
+                AssetId.New(),
+                name!,
+                AssetType.Character,
+                AssetStatus.Draft,
+                DateTimeOffset.UtcNow));
+    }
 }

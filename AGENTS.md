@@ -9,10 +9,9 @@ current task, then expand the survey if this guide is stale or incomplete.
 ## Survey Metadata
 
 - Last surveyed: 2026-08-24
-- Survey baseline: `90dce8a` (`docs: add project agent guide`), based on commit
-  `90dce8a`, including the pending workflow-definition slice
-- Baseline validation: restore/build/test passed, 55 tests, 0 warnings
-- Repository root: `D:\LunarAssetStudio\las`
+- Survey baseline: `c98f490` (`test: strengthen workflow execution lifecycle coverage`)
+- Baseline validation: restore/build/test passed, 197 tests, 0 warnings
+- Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
 ## Product
@@ -40,9 +39,12 @@ Implemented:
 - Workflow Definition versioning with immutable `(WorkflowDefinitionId, Version)` identity;
 - `IWorkflowDefinitionRepository` Core persistence contract;
 - `IWorkflowExecutionRepository` Core persistence contract with optimistic concurrency;
+- `IAssetRepository` Core persistence contract;
 - `InMemoryWorkflowDefinitionRepository` Infrastructure adapter;
 - `InMemoryWorkflowExecutionRepository` Infrastructure adapter;
+- `InMemoryAssetRepository` Infrastructure adapter;
 - `WorkflowExecution.Rehydrate` persistence reconstruction factory;
+- `Asset.Rehydrate` persistence reconstruction factory;
 - `ExecuteWorkflowService` Application layer orchestration;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
@@ -88,7 +90,7 @@ backend/
       Capabilities/        Provider-independent capability concepts
       Workers/             Placeholder
     Lunar.Infrastructure/  Technical implementations
-      Persistence/         In-memory workflow repositories
+      Persistence/         In-memory asset and workflow repositories
     Lunar.Application/     Application-layer orchestration
       Workflows/           ExecuteWorkflowService
     Lunar.Api/             Composition/API boundary; currently template only
@@ -194,6 +196,19 @@ Failed ─────> Processing
 
 Completion and failure are valid only from Processing. Invalid transition
 requests currently leave the state unchanged; they do not throw.
+
+`Asset.Rehydrate` is a narrowly scoped reconstruction factory for
+persistence. It accepts all persisted fields including `Status` and
+`CreatedAt` and validates structural invariants. It does not act as an
+unrestricted backdoor to invalid Asset states.
+
+Core owns `IAssetRepository`, a persistence contract keyed by `AssetId`.
+`TryAddAsync` inserts an Asset if absent (returns `false` if the exact
+identity already exists; never overwrites). `GetAsync` retrieves by ID or
+returns `null`. Invalid identity arguments are rejected with
+`ArgumentException`. Infrastructure provides
+`InMemoryAssetRepository` as a development/test adapter with snapshot
+isolation.
 
 ### Artifact
 
@@ -323,10 +338,14 @@ with Infrastructure adapters at runtime.
 
 `ExecuteWorkflowService` is the first Application service. It coordinates:
 
+- resolving the referenced Asset through `IAssetRepository` (returns
+  `AssetNotFound` if missing);
 - retrieving the exact Workflow Definition version through
-  `IWorkflowDefinitionRepository`;
+  `IWorkflowDefinitionRepository` (returns `WorkflowDefinitionNotFound` if
+  missing);
 - creating a `WorkflowExecution` through the domain `Create` factory;
-- persisting the new execution through `IWorkflowExecutionRepository`;
+- persisting the new execution through `IWorkflowExecutionRepository`
+  (returns `WorkflowExecutionPersistenceFailed` if rejected);
 - returning an explicit `Result<WorkflowExecution>` outcome.
 
 The service does not own domain invariants, lifecycle transitions, or
@@ -339,7 +358,7 @@ Application services use a Result pattern for expected use-case outcomes.
 `Result<T>` is owned by `Lunar.Application` and does not leak into Core.
 `Result<T>.Success(value)` represents a successful outcome;
 `Result<T>.Failure(error)` represents an expected use-case failure.
-Application errors (`WorkflowDefinitionNotFound`,
+Application errors (`AssetNotFound`, `WorkflowDefinitionNotFound`,
 `WorkflowExecutionPersistenceFailed`) are sealed records inheriting from
 `ApplicationError`. They represent failed use-case execution, not domain
 exceptions or programmer errors.
@@ -348,8 +367,8 @@ Exception policy:
 
 - Invalid caller/programmer usage (null dependencies, invalid domain
   construction) remains exception-based.
-- Expected use-case outcomes (definition not found, persistence rejected)
-  are returned as `Result` failures, not thrown.
+- Expected use-case outcomes (asset not found, definition not found,
+  persistence rejected) are returned as `Result` failures, not thrown.
 
 ## Design Rules
 

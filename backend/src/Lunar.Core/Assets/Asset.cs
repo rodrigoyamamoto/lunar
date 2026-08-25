@@ -74,4 +74,49 @@ public sealed class Asset
 
         Status = AssetStatus.Failed;
     }
+
+
+    public static Asset Rehydrate(
+        AssetId id,
+        string name,
+        AssetType type,
+        AssetStatus status,
+        DateTimeOffset createdAt)
+    {
+        if (id.Value == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Asset identifier cannot be empty.",
+                nameof(id));
+        }
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException(
+                "Asset name cannot be null, empty, or whitespace.",
+                nameof(name));
+        }
+
+        return new Asset(
+            id,
+            name,
+            type,
+            status,
+            createdAt);
+    }
+
+
+    private Asset(
+        AssetId id,
+        string name,
+        AssetType type,
+        AssetStatus status,
+        DateTimeOffset createdAt)
+    {
+        Id = id;
+        Name = name;
+        Type = type;
+        Status = status;
+        CreatedAt = createdAt;
+    }
 }

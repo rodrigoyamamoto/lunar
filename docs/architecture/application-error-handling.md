@@ -57,6 +57,8 @@ Business rule prevents execution
 
 Current concrete errors:
 
+-   `AssetNotFound` — the referenced Asset was not found in the
+    repository;
 -   `WorkflowDefinitionNotFound` — the requested definition version was
     not found in the repository;
 -   `WorkflowExecutionPersistenceFailed` — the repository rejected
@@ -109,13 +111,14 @@ in a future slice.
 `Result<WorkflowExecution>` from `ExecuteAsync`:
 
 -   **Success:** `Result<WorkflowExecution>.Success(execution)` when the
-    definition exists and the execution is persisted;
+    Asset exists, the definition exists, and the execution is persisted;
 -   **Expected failure:** `Result<WorkflowExecution>.Failure(...)` when
-    the definition is not found or persistence is rejected;
+    the Asset is not found, the definition is not found, or persistence
+    is rejected;
 -   **Exceptions:** `ArgumentNullException` for null dependencies;
-    `ArgumentException` from `WorkflowExecution.Create` for invalid
-    identifiers or version; `OperationCanceledException` for cancelled
-    tokens.
+    `ArgumentException` from repository contracts or
+    `WorkflowExecution.Create` for invalid identifiers or version;
+    `OperationCanceledException` for cancelled tokens.
 
 No `catch` blocks exist in Application code. No exception-to-Result
 conversion is performed. Domain exceptions propagate naturally.
