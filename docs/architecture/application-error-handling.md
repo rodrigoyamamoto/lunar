@@ -41,6 +41,87 @@ Value objects returning Result<T>
 
 Core must remain independent of Application concerns.
 
+## Naming Convention
+
+`ApplicationError` is the abstract base type that names the category:
+expected Application-layer failure. Concrete subtypes name the specific
+use-case outcome directly and must **not** add the suffix `Error`
+merely because they derive from `ApplicationError`. The base type
+already establishes the category; the subtype should answer "what
+happened?".
+
+This is a deliberate Lunar convention, not a universal .NET naming
+requirement.
+
+Preferred concrete names:
+
+```text
+AssetNotFound
+WorkflowDefinitionNotFound
+WorkflowExecutionNotFound
+WorkflowExecutionConcurrencyConflict
+WorkflowExecutionCannotStart
+WorkflowExecutionNotRunning
+WorkflowExecutionPersistenceFailed
+ArtifactWorkflowProvenanceMissing
+ArtifactWorkflowExecutionMismatch
+ArtifactWorkflowAssetMismatch
+ArtifactPersistenceFailed
+```
+
+Avoid redundant suffixing:
+
+```text
+AssetNotFoundError
+WorkflowExecutionNotFoundError
+WorkflowExecutionConcurrencyConflictError
+ArtifactWorkflowAssetMismatchError
+```
+
+Names ending in `Failed`, `Failure`, `Conflict`, `Missing`, or
+`Mismatch` are valid when they describe the actual outcome. Do not
+rename them to `...Error` merely for symmetry.
+
+This convention improves pattern-matching readability:
+
+```csharp
+result.Error is WorkflowExecutionNotFound
+result.Error is ArtifactWorkflowAssetMismatch
+```
+
+reads more naturally than:
+
+```csharp
+result.Error is WorkflowExecutionNotFoundError
+result.Error is ArtifactWorkflowAssetMismatchError
+```
+
+### Exception Naming
+
+`ApplicationError` subtypes are expected use-case outcomes returned
+through `Result<T>.Failure(error)`. They are not thrown exceptions and
+must not be named with the `Exception` suffix.
+
+Any custom type deriving from `System.Exception` must use the suffix
+`Exception`, following standard .NET naming conventions. Core currently
+uses BCL exceptions (`ArgumentException`, `ArgumentNullException`,
+`OperationCanceledException`) for invalid construction, preconditions,
+and cancellation. Custom exceptions should be introduced only when a
+concrete requirement justifies them.
+
+A custom exception must not be named like an Application result outcome
+without the `Exception` suffix. Likewise, an `ApplicationError` subtype
+must not be renamed to `...Exception` unless its behavior actually
+changes from expected `Result` failure to thrown exception, which would
+require a separate architectural decision.
+
+### File Names
+
+For one-primary-type-per-file code, the file name matches the primary
+type name. For example, `AssetNotFound.cs` contains `AssetNotFound`;
+`ApplicationError.cs` contains `ApplicationError`. Do not name a file
+`AssetNotFoundError.cs` for a type named `AssetNotFound`.
+
 ## Failure Classification
 
 ### Expected use-case outcomes
