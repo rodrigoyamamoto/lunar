@@ -130,7 +130,7 @@ public sealed class WorkflowExecution
                 nameof(revision));
         }
 
-        ValidateStateCoherence(status, startedAt, completedAt);
+        ValidateStateCoherence(status, createdAt, startedAt, completedAt);
 
         return new WorkflowExecution(
             id,
@@ -147,6 +147,7 @@ public sealed class WorkflowExecution
 
     private static void ValidateStateCoherence(
         WorkflowExecutionStatus status,
+        DateTimeOffset createdAt,
         DateTimeOffset? startedAt,
         DateTimeOffset? completedAt)
     {
@@ -168,6 +169,13 @@ public sealed class WorkflowExecution
                         "Running execution must have StartedAt and no CompletedAt.",
                         nameof(status));
                 }
+
+                if (startedAt.Value < createdAt)
+                {
+                    throw new ArgumentException(
+                        "Running execution StartedAt cannot precede CreatedAt.",
+                        nameof(startedAt));
+                }
                 break;
 
             case WorkflowExecutionStatus.Completed:
@@ -178,6 +186,20 @@ public sealed class WorkflowExecution
                     throw new ArgumentException(
                         "Terminal execution must have both StartedAt and CompletedAt.",
                         nameof(status));
+                }
+
+                if (startedAt.Value < createdAt)
+                {
+                    throw new ArgumentException(
+                        "Terminal execution StartedAt cannot precede CreatedAt.",
+                        nameof(startedAt));
+                }
+
+                if (completedAt.Value < startedAt.Value)
+                {
+                    throw new ArgumentException(
+                        "Terminal execution CompletedAt cannot precede StartedAt.",
+                        nameof(completedAt));
                 }
                 break;
 

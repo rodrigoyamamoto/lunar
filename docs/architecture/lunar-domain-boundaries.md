@@ -210,8 +210,11 @@ complete state machine.
 # Application Layer
 
 The Application layer coordinates use cases by depending on Core
-abstractions. It does not reference Infrastructure directly; the API
-composes Application services with Infrastructure adapters at runtime.
+abstractions. It does not reference Infrastructure directly. The API is
+the intended composition boundary and will compose Application services
+with Infrastructure adapters once API use cases require that dependency.
+`Lunar.Api` currently references `Lunar.Core` and `Lunar.Infrastructure`
+only; it does not yet reference `Lunar.Application`.
 
 `ExecuteWorkflowService` is the first Application service. It
 coordinates workflow execution creation: it resolves the referenced

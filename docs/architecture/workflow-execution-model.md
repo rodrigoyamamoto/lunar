@@ -264,9 +264,14 @@ validates structural invariants:
 -   `Revision >= 0`;
 -   status/timestamp coherence:
     -   `Created`: `StartedAt = null`, `CompletedAt = null`;
-    -   `Running`: `StartedAt != null`, `CompletedAt = null`;
+    -   `Running`: `StartedAt != null`, `CompletedAt = null`,
+        `CreatedAt <= StartedAt`;
     -   terminal (`Completed`/`Failed`/`Cancelled`): both
-        `StartedAt != null` and `CompletedAt != null`.
+        `StartedAt != null` and `CompletedAt != null`,
+        `CreatedAt <= StartedAt <= CompletedAt`.
+
+Chronological ordering uses non-strict comparisons (`<=`) so that
+transitions sharing the same clock resolution remain valid.
 
 It does not act as an unrestricted backdoor to invalid lifecycle states.
 

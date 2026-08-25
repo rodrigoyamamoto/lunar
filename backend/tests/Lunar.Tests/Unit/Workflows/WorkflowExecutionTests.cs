@@ -617,7 +617,8 @@ public class WorkflowExecutionTests
     [Fact]
     public void Rehydrate_ShouldReconstructValidRunningState()
     {
-        var startedAt = DateTimeOffset.UtcNow;
+        var createdAt = DateTimeOffset.UtcNow;
+        var startedAt = createdAt.AddMinutes(1);
 
         var execution = WorkflowExecution.Rehydrate(
             WorkflowExecutionId.New(),
@@ -626,7 +627,7 @@ public class WorkflowExecutionTests
             1,
             WorkflowExecutionStatus.Running,
             3,
-            DateTimeOffset.UtcNow,
+            createdAt,
             startedAt,
             null);
 
@@ -640,7 +641,8 @@ public class WorkflowExecutionTests
     [Fact]
     public void Rehydrate_ShouldReconstructValidCompletedState()
     {
-        var startedAt = DateTimeOffset.UtcNow;
+        var createdAt = DateTimeOffset.UtcNow;
+        var startedAt = createdAt.AddMinutes(1);
         var completedAt = startedAt.AddMinutes(5);
 
         var execution = WorkflowExecution.Rehydrate(
@@ -650,7 +652,7 @@ public class WorkflowExecutionTests
             1,
             WorkflowExecutionStatus.Completed,
             7,
-            DateTimeOffset.UtcNow,
+            createdAt,
             startedAt,
             completedAt);
 
@@ -664,6 +666,10 @@ public class WorkflowExecutionTests
     [Fact]
     public void Rehydrate_ShouldReconstructValidFailedState()
     {
+        var createdAt = DateTimeOffset.UtcNow;
+        var startedAt = createdAt.AddMinutes(1);
+        var completedAt = startedAt.AddMinutes(5);
+
         var execution = WorkflowExecution.Rehydrate(
             WorkflowExecutionId.New(),
             AssetId.New(),
@@ -671,9 +677,9 @@ public class WorkflowExecutionTests
             1,
             WorkflowExecutionStatus.Failed,
             2,
-            DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow);
+            createdAt,
+            startedAt,
+            completedAt);
 
         Assert.Equal(WorkflowExecutionStatus.Failed, execution.Status);
         Assert.Equal(2, execution.Revision);
@@ -683,6 +689,10 @@ public class WorkflowExecutionTests
     [Fact]
     public void Rehydrate_ShouldReconstructValidCancelledState()
     {
+        var createdAt = DateTimeOffset.UtcNow;
+        var startedAt = createdAt.AddMinutes(1);
+        var completedAt = startedAt.AddMinutes(5);
+
         var execution = WorkflowExecution.Rehydrate(
             WorkflowExecutionId.New(),
             AssetId.New(),
@@ -690,9 +700,9 @@ public class WorkflowExecutionTests
             1,
             WorkflowExecutionStatus.Cancelled,
             2,
-            DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow);
+            createdAt,
+            startedAt,
+            completedAt);
 
         Assert.Equal(WorkflowExecutionStatus.Cancelled, execution.Status);
         Assert.Equal(2, execution.Revision);
@@ -885,6 +895,144 @@ public class WorkflowExecutionTests
                 DateTimeOffset.UtcNow,
                 DateTimeOffset.UtcNow,
                 null));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldRejectRunningStartedBeforeCreated()
+    {
+        var createdAt = DateTimeOffset.UtcNow;
+        var startedAt = createdAt.AddMinutes(-1);
+
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                WorkflowExecutionStatus.Running,
+                1,
+                createdAt,
+                startedAt,
+                null));
+    }
+
+
+    [Theory]
+    [InlineData(WorkflowExecutionStatus.Completed)]
+    [InlineData(WorkflowExecutionStatus.Failed)]
+    [InlineData(WorkflowExecutionStatus.Cancelled)]
+    public void Rehydrate_ShouldRejectTerminalStartedBeforeCreated(
+        WorkflowExecutionStatus terminalStatus)
+    {
+        var createdAt = DateTimeOffset.UtcNow;
+        var startedAt = createdAt.AddMinutes(-1);
+        var completedAt = createdAt.AddMinutes(5);
+
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                terminalStatus,
+                1,
+                createdAt,
+                startedAt,
+                completedAt));
+    }
+
+
+    [Theory]
+    [InlineData(WorkflowExecutionStatus.Completed)]
+    [InlineData(WorkflowExecutionStatus.Failed)]
+    [InlineData(WorkflowExecutionStatus.Cancelled)]
+    public void Rehydrate_ShouldRejectTerminalCompletedBeforeStarted(
+        WorkflowExecutionStatus terminalStatus)
+    {
+        var createdAt = DateTimeOffset.UtcNow;
+        var startedAt = createdAt.AddMinutes(5);
+        var completedAt = startedAt.AddMinutes(-1);
+
+        Assert.Throws<ArgumentException>(() =>
+            WorkflowExecution.Rehydrate(
+                WorkflowExecutionId.New(),
+                AssetId.New(),
+                WorkflowDefinitionId.New(),
+                1,
+                terminalStatus,
+                1,
+                createdAt,
+                startedAt,
+                completedAt));
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldAcceptEqualTimestampsForTerminalState()
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+
+        var execution = WorkflowExecution.Rehydrate(
+            WorkflowExecutionId.New(),
+            AssetId.New(),
+            WorkflowDefinitionId.New(),
+            1,
+            WorkflowExecutionStatus.Completed,
+            1,
+            timestamp,
+            timestamp,
+            timestamp);
+
+        Assert.Equal(timestamp, execution.CreatedAt);
+        Assert.Equal(timestamp, execution.StartedAt);
+        Assert.Equal(timestamp, execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldAcceptEqualTimestampsForRunningState()
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+
+        var execution = WorkflowExecution.Rehydrate(
+            WorkflowExecutionId.New(),
+            AssetId.New(),
+            WorkflowDefinitionId.New(),
+            1,
+            WorkflowExecutionStatus.Running,
+            1,
+            timestamp,
+            timestamp,
+            null);
+
+        Assert.Equal(timestamp, execution.CreatedAt);
+        Assert.Equal(timestamp, execution.StartedAt);
+        Assert.Null(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Rehydrate_ShouldPreserveExactSuppliedTimestamps()
+    {
+        var createdAt = new DateTimeOffset(2026, 1, 15, 10, 0, 0, TimeSpan.Zero);
+        var startedAt = new DateTimeOffset(2026, 1, 15, 10, 5, 0, TimeSpan.Zero);
+        var completedAt = new DateTimeOffset(2026, 1, 15, 10, 30, 0, TimeSpan.Zero);
+
+        var execution = WorkflowExecution.Rehydrate(
+            WorkflowExecutionId.New(),
+            AssetId.New(),
+            WorkflowDefinitionId.New(),
+            1,
+            WorkflowExecutionStatus.Completed,
+            4,
+            createdAt,
+            startedAt,
+            completedAt);
+
+        Assert.Equal(createdAt, execution.CreatedAt);
+        Assert.Equal(startedAt, execution.StartedAt);
+        Assert.Equal(completedAt, execution.CompletedAt);
     }
 
 

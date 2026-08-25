@@ -9,8 +9,8 @@ current task, then expand the survey if this guide is stale or incomplete.
 ## Survey Metadata
 
 - Last surveyed: 2026-08-25
-- Survey baseline: `590b66c` (`feat: add artifact persistence boundary`)
-- Baseline validation: restore/build/test passed, 258 tests, 0 warnings
+- Survey baseline: `4250759` (`feat: add workflow artifact recording boundary`)
+- Baseline validation: restore/build/test passed, 280 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -122,8 +122,8 @@ The allowed project dependency direction is:
 
 ```text
 Lunar.Api ───────────────> Lunar.Core
-    └──────> Lunar.Application ───────> Lunar.Core
     └──────> Lunar.Infrastructure ───────> Lunar.Core
+    (Lunar.Application ───────> Lunar.Core — intended; not yet referenced by Api)
 
 Lunar.Tests ─────────────> Lunar.Core
 Lunar.Tests ─────────────> Lunar.Application
@@ -131,16 +131,27 @@ Lunar.Tests ─────────────> Lunar.Infrastructure
 Lunar.Core ──────────────> no Lunar project and no external technology
 ```
 
+Current concrete `Lunar.Api.csproj` project references:
+
+- `Lunar.Core`
+- `Lunar.Infrastructure`
+
+`Lunar.Api` does not currently reference `Lunar.Application`. The
+Application reference will be added when the first API composition/use-case
+slice actually consumes Application services.
+
 Rules:
 
 - Core must not reference Infrastructure, API, Application, providers,
   databases, file systems, external SDKs, AI models, Blender, Unreal, or
   Unity.
 - Application coordinates use cases by depending on Core abstractions. It
-  must not reference Infrastructure directly; the API composes Application
-  services with Infrastructure adapters.
+  must not reference Infrastructure directly; the API is the intended
+  composition boundary and will compose Application services with
+  Infrastructure adapters once API use cases require that dependency.
 - Infrastructure adapts technical systems to Core concepts.
-- API is the composition and delivery boundary.
+- API is the intended composition and delivery boundary. It currently
+  references Core and Infrastructure only.
 - Tests reference only projects they currently exercise. Do not add a
   reference in anticipation of future tests.
 - Avoid cycles and speculative layers.
@@ -355,8 +366,10 @@ repository state.
 
 The Application layer coordinates use cases. It depends on Core
 abstractions (domain objects and persistence contracts) but does not
-reference Infrastructure directly. The API composes Application services
-with Infrastructure adapters at runtime.
+reference Infrastructure directly. The API is the intended composition
+boundary and will compose Application services with Infrastructure
+adapters once API use cases require that dependency. `Lunar.Api` does
+not currently reference `Lunar.Application`.
 
 `ExecuteWorkflowService` is the first Application service. It coordinates:
 
