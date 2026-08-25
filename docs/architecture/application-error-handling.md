@@ -16,6 +16,11 @@ Lunar.Application
     ApplicationError
     WorkflowDefinitionNotFound
     WorkflowExecutionPersistenceFailed
+    WorkflowExecutionNotRunning
+    ArtifactWorkflowProvenanceMissing
+    ArtifactWorkflowExecutionMismatch
+    ArtifactWorkflowAssetMismatch
+    ArtifactPersistenceFailed
 ```
 
 Allowed:
@@ -69,7 +74,17 @@ Current concrete errors:
     revision no longer matches persisted state (either already stale at
     read time or a concurrent update raced between read and update);
 -   `WorkflowExecutionCannotStart` — the Workflow Execution exists but
-    cannot be started from its current lifecycle state.
+    cannot be started from its current lifecycle state;
+-   `WorkflowExecutionNotRunning` — the Workflow Execution exists but is
+    not in the `Running` status required for recording workflow output;
+-   `ArtifactWorkflowProvenanceMissing` — the Artifact carries no
+    `SourceExecutionId`, so it cannot be recorded as workflow output;
+-   `ArtifactWorkflowExecutionMismatch` — the Artifact's
+    `SourceExecutionId` differs from the requested `WorkflowExecutionId`;
+-   `ArtifactWorkflowAssetMismatch` — the Artifact's `AssetId` differs
+    from the `WorkflowExecution.AssetId`;
+-   `ArtifactPersistenceFailed` — the Artifact repository rejected
+    insertion (e.g. duplicate identity).
 
 ### Programmer/domain errors
 
@@ -153,6 +168,34 @@ Concurrency distinction:
     the outcome is deterministic regardless of persistence state.
 -   A non-negative but stale `expectedRevision` is an expected use-case
     failure and is returned as `WorkflowExecutionConcurrencyConflict`.
+
+`RecordWorkflowArtifactService` returns `Result<Artifact>` from
+`RecordAsync`:
+
+-   **Success:** `Result<Artifact>.Success(artifact)` when the execution
+    exists, is `Running`, the Artifact carries matching workflow
+    provenance, the Artifact's `AssetId` matches the execution's
+    `AssetId`, and the Artifact is persisted;
+-   **Expected failure:** `Result<Artifact>.Failure(...)` when the
+    execution is not found (`WorkflowExecutionNotFound`), the execution
+    is not `Running` (`WorkflowExecutionNotRunning`), the Artifact lacks
+    workflow provenance (`ArtifactWorkflowProvenanceMissing`), the
+    Artifact's `SourceExecutionId` differs from the requested execution
+    (`ArtifactWorkflowExecutionMismatch`), the Artifact's `AssetId`
+    differs from the execution's `AssetId`
+    (`ArtifactWorkflowAssetMismatch`), or the repository rejects the
+    insert (`ArtifactPersistenceFailed`);
+-   **Exceptions:** `ArgumentNullException` for null dependencies or a
+    null Artifact; `ArgumentException` for an empty
+    `WorkflowExecutionId` (from repository contract);
+    `OperationCanceledException` for cancelled tokens.
+
+The service does not generate the Artifact, invoke providers/models, or
+dispatch capabilities. It does not mutate `WorkflowExecution` or
+automatically complete it. It does not resolve or traverse
+`SourceArtifactIds`; cross-Asset direct lineage remains permitted
+because only Artifact ownership relative to the execution is checked.
+Artifact persistence remains insert-only.
 
 No `catch` blocks exist in Application code. No exception-to-Result
 conversion is performed. Domain exceptions propagate naturally.

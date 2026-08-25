@@ -343,6 +343,37 @@ persistence state. A non-negative but stale `expectedRevision` is an
 expected use-case failure returned as
 `WorkflowExecutionConcurrencyConflict`.
 
+### Recording Workflow Output
+
+`RecordWorkflowArtifactService` coordinates recording an already-created
+`Artifact` as an output of an existing running `WorkflowExecution`. The
+service:
+
+-   loads the execution through `IWorkflowExecutionRepository.GetAsync`
+    (returns `WorkflowExecutionNotFound` if missing);
+-   requires the execution status to be `Running` (returns
+    `WorkflowExecutionNotRunning` otherwise);
+-   requires the Artifact to carry workflow provenance through
+    `Artifact.SourceExecutionId` (returns
+    `ArtifactWorkflowProvenanceMissing` if absent);
+-   requires `Artifact.SourceExecutionId` to exactly equal the requested
+    `WorkflowExecutionId` (returns
+    `ArtifactWorkflowExecutionMismatch` if it differs);
+-   requires `Artifact.AssetId` to exactly equal
+    `WorkflowExecution.AssetId` (returns
+    `ArtifactWorkflowAssetMismatch` if it differs);
+-   persists the Artifact through `IArtifactRepository.TryAddAsync`
+    (returns `ArtifactPersistenceFailed` if the insert is rejected);
+-   returns the recorded `Artifact` on success.
+
+The service does not generate the Artifact, invoke providers/models, or
+dispatch capabilities. It does not mutate `WorkflowExecution` or
+automatically complete it. It does not resolve or traverse
+`SourceArtifactIds`; cross-Asset direct lineage remains permitted
+because only Artifact ownership relative to the execution is checked.
+Artifact persistence remains insert-only; the service does not update,
+replace, or delete Artifacts.
+
 ## Future Evolution
 
 Possible future concepts:

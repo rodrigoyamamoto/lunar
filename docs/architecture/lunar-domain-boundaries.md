@@ -227,6 +227,19 @@ domain `Start()` transition, and persists the change through optimistic
 concurrency. The service returns the persisted execution with the
 incremented revision on success.
 
+`RecordWorkflowArtifactService` is the third Application service. It
+records an already-created `Artifact` as an output of an existing running
+`WorkflowExecution`: it loads the execution, requires it to be `Running`,
+verifies that the Artifact carries matching workflow provenance
+(`SourceExecutionId`), verifies that the Artifact's `AssetId` matches the
+execution's `AssetId`, and persists the Artifact through the Core-owned
+`IArtifactRepository` contract. The service does not generate the
+Artifact, invoke providers/models, or dispatch capabilities. It does not
+mutate `WorkflowExecution` or automatically complete it. It does not
+resolve or traverse `SourceArtifactIds`; cross-Asset direct lineage
+remains permitted because only Artifact ownership relative to the
+execution is checked. Artifact persistence remains insert-only.
+
 The Application layer does not own domain invariants, lifecycle
 transitions, or persistence mechanics. It does not duplicate domain
 validation — input validation is delegated to the domain `Create` factory
@@ -238,11 +251,14 @@ Application services use a Result pattern for expected use-case outcomes.
 `Result<T>.Failure(error)` represents an expected use-case failure such
 as `AssetNotFound`, `WorkflowDefinitionNotFound`,
 `WorkflowExecutionPersistenceFailed`, `WorkflowExecutionNotFound`,
-`WorkflowExecutionConcurrencyConflict`, or
-`WorkflowExecutionCannotStart`. Invalid caller/programmer usage (null
-dependencies, invalid domain construction, negative expected revision)
-remains exception-based; expected use-case outcomes are returned as
-`Result` failures, not thrown.
+`WorkflowExecutionConcurrencyConflict`,
+`WorkflowExecutionCannotStart`, `WorkflowExecutionNotRunning`,
+`ArtifactWorkflowProvenanceMissing`,
+`ArtifactWorkflowExecutionMismatch`, `ArtifactWorkflowAssetMismatch`, or
+`ArtifactPersistenceFailed`. Invalid caller/programmer usage (null
+dependencies, null Artifact, invalid domain construction, negative
+expected revision) remains exception-based; expected use-case outcomes
+are returned as `Result` failures, not thrown.
 
 ------------------------------------------------------------------------
 

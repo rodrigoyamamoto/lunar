@@ -9,8 +9,8 @@ current task, then expand the survey if this guide is stale or incomplete.
 ## Survey Metadata
 
 - Last surveyed: 2026-08-25
-- Survey baseline: `4cfd5ad` (`feat: add workflow execution start boundary`)
-- Baseline validation: restore/build/test passed, 241 tests, 0 warnings
+- Survey baseline: `590b66c` (`feat: add artifact persistence boundary`)
+- Baseline validation: restore/build/test passed, 258 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -49,6 +49,7 @@ Implemented:
 - `Asset.Rehydrate` persistence reconstruction factory;
 - `ExecuteWorkflowService` Application layer orchestration;
 - `StartWorkflowExecutionService` Application layer orchestration;
+- `RecordWorkflowArtifactService` Application layer orchestration;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
 - Infrastructure repository tests;
@@ -96,6 +97,7 @@ backend/
       Persistence/         In-memory asset, artifact, and workflow repositories
     Lunar.Application/     Application-layer orchestration
       Workflows/           ExecuteWorkflowService, StartWorkflowExecutionService
+      Artifacts/           RecordWorkflowArtifactService
     Lunar.Api/             Composition/API boundary; currently template only
   tests/
     Lunar.Tests/
@@ -390,23 +392,59 @@ validation is delegated to the domain `Create` factory and repository
 contracts. It does not introduce CQRS — `Command`, `Query`, and `Handler`
 suffixes remain reserved for possible future adoption.
 
+`RecordWorkflowArtifactService` is the third Application service. It
+records an already-created `Artifact` as an output of an existing running
+`WorkflowExecution`:
+
+- loading the execution through `IWorkflowExecutionRepository.GetAsync`
+  (returns `WorkflowExecutionNotFound` if missing);
+- checking that the execution status is `Running` (returns
+  `WorkflowExecutionNotRunning` otherwise);
+- requiring that the Artifact carries workflow provenance through
+  `Artifact.SourceExecutionId` (returns
+  `ArtifactWorkflowProvenanceMissing` if absent);
+- checking that `Artifact.SourceExecutionId` exactly equals the
+  requested `WorkflowExecutionId` (returns
+  `ArtifactWorkflowExecutionMismatch` if it differs);
+- checking that `Artifact.AssetId` exactly equals
+  `WorkflowExecution.AssetId` (returns `ArtifactWorkflowAssetMismatch`
+  if it differs);
+- persisting the Artifact through `IArtifactRepository.TryAddAsync`
+  (returns `ArtifactPersistenceFailed` if the insert is rejected, e.g.
+  duplicate identity);
+- returning the recorded `Artifact` on success.
+
+The service does not generate the Artifact, invoke providers/models, or
+dispatch capabilities. It does not mutate `WorkflowExecution` or
+automatically complete it. It does not resolve or traverse
+`SourceArtifactIds`; cross-Asset direct lineage remains permitted because
+only Artifact ownership relative to the execution is checked. Artifact
+persistence remains insert-only; the service does not update, replace, or
+delete Artifacts.
+
 Application services use a Result pattern for expected use-case outcomes.
 `Result<T>` is owned by `Lunar.Application` and does not leak into Core.
 `Result<T>.Success(value)` represents a successful outcome;
 `Result<T>.Failure(error)` represents an expected use-case failure.
 Application errors (`AssetNotFound`, `WorkflowDefinitionNotFound`,
 `WorkflowExecutionPersistenceFailed`, `WorkflowExecutionNotFound`,
-`WorkflowExecutionConcurrencyConflict`, `WorkflowExecutionCannotStart`)
-are sealed records inheriting from `ApplicationError`. They represent
-failed use-case execution, not domain exceptions or programmer errors.
+`WorkflowExecutionConcurrencyConflict`, `WorkflowExecutionCannotStart`,
+`WorkflowExecutionNotRunning`, `ArtifactWorkflowProvenanceMissing`,
+`ArtifactWorkflowExecutionMismatch`, `ArtifactWorkflowAssetMismatch`,
+`ArtifactPersistenceFailed`) are sealed records inheriting from
+`ApplicationError`. They represent failed use-case execution, not domain
+exceptions or programmer errors.
 
 Exception policy:
 
-- Invalid caller/programmer usage (null dependencies, invalid domain
-  construction, negative expected revision) remains exception-based.
+- Invalid caller/programmer usage (null dependencies, null Artifact,
+  invalid domain construction, negative expected revision) remains
+  exception-based.
 - Expected use-case outcomes (asset not found, definition not found,
   persistence rejected, execution not found, concurrency conflict,
-  cannot start) are returned as `Result` failures, not thrown.
+  cannot start, execution not running, artifact provenance missing,
+  artifact provenance mismatch, artifact asset mismatch, artifact
+  persistence rejected) are returned as `Result` failures, not thrown.
 
 ## Design Rules
 
