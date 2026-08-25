@@ -205,6 +205,13 @@ Asset, retrieves the exact Workflow Definition version, creates a
 the Core-owned repository contract. The service requires the referenced
 Asset to exist before creating a Workflow Execution.
 
+`StartWorkflowExecutionService` is the second Application service. It
+coordinates starting an existing `WorkflowExecution`: it loads the
+execution, checks the caller-supplied expected revision, requests the
+domain `Start()` transition, and persists the change through optimistic
+concurrency. The service returns the persisted execution with the
+incremented revision on success.
+
 The Application layer does not own domain invariants, lifecycle
 transitions, or persistence mechanics. It does not duplicate domain
 validation — input validation is delegated to the domain `Create` factory
@@ -214,11 +221,13 @@ Application services use a Result pattern for expected use-case outcomes.
 `Result<T>` is owned by `Lunar.Application` and does not leak into Core.
 `Result<T>.Success(value)` represents a successful outcome;
 `Result<T>.Failure(error)` represents an expected use-case failure such
-as `AssetNotFound`, `WorkflowDefinitionNotFound`, or
-`WorkflowExecutionPersistenceFailed`. Invalid caller/programmer usage
-(null dependencies, invalid domain construction) remains
-exception-based; expected use-case outcomes are returned as `Result`
-failures, not thrown.
+as `AssetNotFound`, `WorkflowDefinitionNotFound`,
+`WorkflowExecutionPersistenceFailed`, `WorkflowExecutionNotFound`,
+`WorkflowExecutionConcurrencyConflict`, or
+`WorkflowExecutionCannotStart`. Invalid caller/programmer usage (null
+dependencies, invalid domain construction, negative expected revision)
+remains exception-based; expected use-case outcomes are returned as
+`Result` failures, not thrown.
 
 ------------------------------------------------------------------------
 

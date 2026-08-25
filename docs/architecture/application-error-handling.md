@@ -62,7 +62,14 @@ Current concrete errors:
 -   `WorkflowDefinitionNotFound` — the requested definition version was
     not found in the repository;
 -   `WorkflowExecutionPersistenceFailed` — the repository rejected
-    insertion of a new execution.
+    insertion of a new execution;
+-   `WorkflowExecutionNotFound` — the referenced Workflow Execution was
+    not found in the repository;
+-   `WorkflowExecutionConcurrencyConflict` — the caller-supplied expected
+    revision no longer matches persisted state (either already stale at
+    read time or a concurrent update raced between read and update);
+-   `WorkflowExecutionCannotStart` — the Workflow Execution exists but
+    cannot be started from its current lifecycle state.
 
 ### Programmer/domain errors
 
@@ -107,8 +114,8 @@ in a future slice.
 
 ## Current Implementation
 
-`ExecuteWorkflowService` is the only Application service. It returns
-`Result<WorkflowExecution>` from `ExecuteAsync`:
+`ExecuteWorkflowService` returns `Result<WorkflowExecution>` from
+`ExecuteAsync`:
 
 -   **Success:** `Result<WorkflowExecution>.Success(execution)` when the
     Asset exists, the definition exists, and the execution is persisted;
@@ -119,6 +126,33 @@ in a future slice.
     `ArgumentException` from repository contracts or
     `WorkflowExecution.Create` for invalid identifiers or version;
     `OperationCanceledException` for cancelled tokens.
+
+`StartWorkflowExecutionService` returns `Result<WorkflowExecution>` from
+`StartAsync`:
+
+-   **Success:** `Result<WorkflowExecution>.Success(persistedExecution)`
+    when the execution exists, the revision matches, the domain accepts
+    the Start transition, and persistence succeeds. The returned
+    execution has the incremented `Revision`;
+-   **Expected failure:** `Result<WorkflowExecution>.Failure(...)` when
+    the execution is not found (`WorkflowExecutionNotFound`), the
+    expected revision is stale
+    (`WorkflowExecutionConcurrencyConflict`), a concurrent update races
+    between read and update (`WorkflowExecutionConcurrencyConflict`), or
+    the domain rejects the Start transition from the current lifecycle
+    state (`WorkflowExecutionCannotStart`);
+-   **Exceptions:** `ArgumentNullException` for null dependencies;
+    `ArgumentException` for empty `WorkflowExecutionId` (from repository
+    contract) or negative `expectedRevision` (invalid caller input);
+    `OperationCanceledException` for cancelled tokens.
+
+Concurrency distinction:
+
+-   Negative `expectedRevision` is invalid caller/programmer input and
+    remains exception-based. It is validated before repository lookup so
+    the outcome is deterministic regardless of persistence state.
+-   A non-negative but stale `expectedRevision` is an expected use-case
+    failure and is returned as `WorkflowExecutionConcurrencyConflict`.
 
 No `catch` blocks exist in Application code. No exception-to-Result
 conversion is performed. Domain exceptions propagate naturally.

@@ -302,6 +302,47 @@ caller/programmer usage (null dependencies, invalid domain construction)
 remains exception-based. Core does not depend on `Result` or any
 Application concern.
 
+### Starting an Existing Execution
+
+`StartWorkflowExecutionService` coordinates the `Created -> Running`
+lifecycle transition for an existing `WorkflowExecution`. The service:
+
+-   loads the execution through `IWorkflowExecutionRepository.GetAsync`
+    (returns `WorkflowExecutionNotFound` if missing);
+-   checks that the caller-supplied `expectedRevision` matches the loaded
+    revision (returns `WorkflowExecutionConcurrencyConflict` if already
+    stale at read time);
+-   requests the domain transition through `WorkflowExecution.Start()`
+    (returns `WorkflowExecutionCannotStart` if the domain no-ops from
+    `Running`, `Completed`, `Failed`, or `Cancelled`);
+-   persists the transition through
+    `IWorkflowExecutionRepository.TryUpdateAsync` with optimistic
+    concurrency (returns `WorkflowExecutionConcurrencyConflict` if a
+    concurrent update raced between read and update);
+-   returns the persisted `WorkflowExecution` with the incremented
+    `Revision` on success.
+
+Core owns the `Start()` transition rule. Application owns use-case
+orchestration and expected failure translation. Infrastructure owns
+optimistic persistence implementation. The Application service detects
+domain no-ops by comparing lifecycle state before and after calling
+`Start()` — it does not duplicate the Core transition table.
+
+The revision pre-check does not eliminate races: a concurrent writer can
+update persisted state between the read and the `TryUpdateAsync` call.
+Both the pre-check and the `TryUpdateAsync` null result are handled as
+`WorkflowExecutionConcurrencyConflict`. No automatic retry or state
+merge occurs.
+
+`expectedRevision` is the persistence-state revision for optimistic
+concurrency, distinct from `WorkflowDefinitionVersion` (the immutable
+definition identity). Negative `expectedRevision` is invalid
+caller/programmer input and remains exception-based. It is validated
+before repository lookup so the outcome is deterministic regardless of
+persistence state. A non-negative but stale `expectedRevision` is an
+expected use-case failure returned as
+`WorkflowExecutionConcurrencyConflict`.
+
 ## Future Evolution
 
 Possible future concepts:

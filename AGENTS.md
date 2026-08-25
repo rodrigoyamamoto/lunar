@@ -9,8 +9,8 @@ current task, then expand the survey if this guide is stale or incomplete.
 ## Survey Metadata
 
 - Last surveyed: 2026-08-24
-- Survey baseline: `c98f490` (`test: strengthen workflow execution lifecycle coverage`)
-- Baseline validation: restore/build/test passed, 197 tests, 0 warnings
+- Survey baseline: `f46236d` (`feat: require existing asset for workflow execution`)
+- Baseline validation: restore/build/test passed, 214 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -46,6 +46,7 @@ Implemented:
 - `WorkflowExecution.Rehydrate` persistence reconstruction factory;
 - `Asset.Rehydrate` persistence reconstruction factory;
 - `ExecuteWorkflowService` Application layer orchestration;
+- `StartWorkflowExecutionService` Application layer orchestration;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
 - Infrastructure repository tests;
@@ -92,7 +93,7 @@ backend/
     Lunar.Infrastructure/  Technical implementations
       Persistence/         In-memory asset and workflow repositories
     Lunar.Application/     Application-layer orchestration
-      Workflows/           ExecuteWorkflowService
+      Workflows/           ExecuteWorkflowService, StartWorkflowExecutionService
     Lunar.Api/             Composition/API boundary; currently template only
   tests/
     Lunar.Tests/
@@ -348,6 +349,22 @@ with Infrastructure adapters at runtime.
   (returns `WorkflowExecutionPersistenceFailed` if rejected);
 - returning an explicit `Result<WorkflowExecution>` outcome.
 
+`StartWorkflowExecutionService` is the second Application service. It
+coordinates starting an existing `WorkflowExecution`:
+
+- loading the execution through `IWorkflowExecutionRepository.GetAsync`
+  (returns `WorkflowExecutionNotFound` if missing);
+- checking that the caller-supplied `expectedRevision` matches the loaded
+  revision (returns `WorkflowExecutionConcurrencyConflict` if stale);
+- requesting the domain transition through `WorkflowExecution.Start()`
+  (returns `WorkflowExecutionCannotStart` if the domain no-ops);
+- persisting the transition through
+  `IWorkflowExecutionRepository.TryUpdateAsync` with optimistic
+  concurrency (returns `WorkflowExecutionConcurrencyConflict` if the
+  update is rejected due to a race);
+- returning the persisted `WorkflowExecution` with the incremented
+  `Revision` on success.
+
 The service does not own domain invariants, lifecycle transitions, or
 persistence mechanics. It does not duplicate domain logic — input
 validation is delegated to the domain `Create` factory and repository
@@ -359,16 +376,18 @@ Application services use a Result pattern for expected use-case outcomes.
 `Result<T>.Success(value)` represents a successful outcome;
 `Result<T>.Failure(error)` represents an expected use-case failure.
 Application errors (`AssetNotFound`, `WorkflowDefinitionNotFound`,
-`WorkflowExecutionPersistenceFailed`) are sealed records inheriting from
-`ApplicationError`. They represent failed use-case execution, not domain
-exceptions or programmer errors.
+`WorkflowExecutionPersistenceFailed`, `WorkflowExecutionNotFound`,
+`WorkflowExecutionConcurrencyConflict`, `WorkflowExecutionCannotStart`)
+are sealed records inheriting from `ApplicationError`. They represent
+failed use-case execution, not domain exceptions or programmer errors.
 
 Exception policy:
 
 - Invalid caller/programmer usage (null dependencies, invalid domain
-  construction) remains exception-based.
+  construction, negative expected revision) remains exception-based.
 - Expected use-case outcomes (asset not found, definition not found,
-  persistence rejected) are returned as `Result` failures, not thrown.
+  persistence rejected, execution not found, concurrency conflict,
+  cannot start) are returned as `Result` failures, not thrown.
 
 ## Design Rules
 
