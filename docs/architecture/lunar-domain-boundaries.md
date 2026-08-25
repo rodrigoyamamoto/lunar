@@ -96,6 +96,21 @@ or neither. `SourceArtifactIds` records only direct sources; transitive
 lineage is not expanded. Source order is preserved, duplicates and
 self-references are rejected, and the exposed collection is immutable.
 
+Artifact is fully immutable: all properties are get-only and there are
+no mutation methods. Because of this, `Artifact.Rehydrate` is not
+required — the in-memory repository stores and returns the same
+immutable instance without reconstruction.
+
+Core owns a persistence contract for Artifacts
+(`IArtifactRepository`) keyed by `ArtifactId`. `TryAddAsync` inserts an
+Artifact if absent (returns `false` if the exact identity already
+exists; never overwrites). `GetAsync` retrieves by ID or returns
+`null`. Infrastructure provides a concrete in-memory adapter
+(`InMemoryArtifactRepository`). The repository persists Artifact domain
+objects only — it does not store physical files, blobs, or binary data.
+The persistence technology remains replaceable because Core owns the
+contract.
+
 ------------------------------------------------------------------------
 
 ## Workflow

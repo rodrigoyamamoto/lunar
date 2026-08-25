@@ -8,9 +8,9 @@ current task, then expand the survey if this guide is stale or incomplete.
 
 ## Survey Metadata
 
-- Last surveyed: 2026-08-24
-- Survey baseline: `f46236d` (`feat: require existing asset for workflow execution`)
-- Baseline validation: restore/build/test passed, 214 tests, 0 warnings
+- Last surveyed: 2026-08-25
+- Survey baseline: `4cfd5ad` (`feat: add workflow execution start boundary`)
+- Baseline validation: restore/build/test passed, 241 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -40,9 +40,11 @@ Implemented:
 - `IWorkflowDefinitionRepository` Core persistence contract;
 - `IWorkflowExecutionRepository` Core persistence contract with optimistic concurrency;
 - `IAssetRepository` Core persistence contract;
+- `IArtifactRepository` Core persistence contract;
 - `InMemoryWorkflowDefinitionRepository` Infrastructure adapter;
 - `InMemoryWorkflowExecutionRepository` Infrastructure adapter;
 - `InMemoryAssetRepository` Infrastructure adapter;
+- `InMemoryArtifactRepository` Infrastructure adapter;
 - `WorkflowExecution.Rehydrate` persistence reconstruction factory;
 - `Asset.Rehydrate` persistence reconstruction factory;
 - `ExecuteWorkflowService` Application layer orchestration;
@@ -91,7 +93,7 @@ backend/
       Capabilities/        Provider-independent capability concepts
       Workers/             Placeholder
     Lunar.Infrastructure/  Technical implementations
-      Persistence/         In-memory asset and workflow repositories
+      Persistence/         In-memory asset, artifact, and workflow repositories
     Lunar.Application/     Application-layer orchestration
       Workflows/           ExecuteWorkflowService, StartWorkflowExecutionService
     Lunar.Api/             Composition/API boundary; currently template only
@@ -235,6 +237,23 @@ self-reference is rejected; source order is preserved exactly; the stored
 collection is immutable and cannot be mutated through the exposed property or
 the original caller-supplied collection. Cross-Asset lineage is permitted.
 Transitive lineage is not expanded — only direct sources are recorded.
+
+Artifact is fully immutable: all properties are get-only, there are no
+mutation methods, and `SourceArtifactIds` is backed by a
+`ReadOnlyCollection<ArtifactId>`. Because of this, `Artifact.Rehydrate` is
+not required — the in-memory repository stores and returns the same
+immutable instance without reconstruction. This differs from `Asset` and
+`WorkflowExecution`, which have mutable lifecycle state and require
+`Rehydrate` for snapshot isolation.
+
+Core owns `IArtifactRepository`, a persistence contract keyed by
+`ArtifactId`. `TryAddAsync` inserts an Artifact if absent (returns `false`
+if the exact identity already exists; never overwrites). `GetAsync`
+retrieves by ID or returns `null`. Invalid identity arguments are rejected
+with `ArgumentException`. Infrastructure provides
+`InMemoryArtifactRepository` as a development/test adapter. The repository
+persists Artifact domain objects only — it does not store physical files,
+blobs, or binary data. No durable persistence, ORM, or database is present.
 
 ### Capability
 
