@@ -158,6 +158,16 @@ Capabilities are abstractions.
 
 The implementation behind a capability can change.
 
+`ICapabilityExecutor` is the provider-independent Core execution port
+that bridges a `WorkflowStep.CapabilityId` to an actual invocation. It
+receives a `CapabilityExecutionRequest` (authoritative Lunar execution
+context) and returns a `CapabilityExecutionOutput` (one logical Artifact
+output description). The executor does not own `ArtifactId`, `AssetId`,
+`SourceExecutionId`, or `CreatedAt` — Lunar assigns those when
+constructing the `Artifact`. No production executor implementation
+exists yet; the first real Infrastructure adapter will be supplied by a
+future provider slice.
+
 ------------------------------------------------------------------------
 
 ## Execution

@@ -9,8 +9,8 @@ current task, then expand the survey if this guide is stale or incomplete.
 ## Survey Metadata
 
 - Last surveyed: 2026-08-25
-- Survey baseline: `4250759` (`feat: add workflow artifact recording boundary`)
-- Baseline validation: restore/build/test passed, 280 tests, 0 warnings
+- Survey baseline: `5535d5c` (`docs: formalize error and exception naming conventions`)
+- Baseline validation: restore/build/test passed, 290 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -50,6 +50,11 @@ Implemented:
 - `ExecuteWorkflowService` Application layer orchestration;
 - `StartWorkflowExecutionService` Application layer orchestration;
 - `RecordWorkflowArtifactService` Application layer orchestration;
+- `ExecuteWorkflowStepService` Application layer orchestration;
+- `ICapabilityExecutor` provider-independent Core execution port;
+- `CapabilityExecutionRequest` Core execution context;
+- `CapabilityExecutionOutput` Core logical Artifact output description;
+- `WorkflowStepNotFound` Application error;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
 - Infrastructure repository tests;
@@ -274,6 +279,32 @@ A Capability represents something Lunar can do independently of providers,
 models, or implementations. It contains a `CapabilityId` and a `Name`. It does
 not carry provider, model, endpoint, or configuration information.
 
+### Capability Execution
+
+`ICapabilityExecutor` is a provider-independent Core execution port. It
+receives a `CapabilityExecutionRequest` (authoritative Lunar execution
+context: `CapabilityId`, `AssetId`, `WorkflowExecutionId`,
+`WorkflowDefinitionId`, `WorkflowDefinitionVersion`, `StepPosition`) and
+returns one `CapabilityExecutionOutput` (logical Artifact output
+description: `ArtifactName`, `ArtifactType`, `SourceArtifactIds`).
+
+The executor does not create `ArtifactId`, `AssetId`,
+`SourceExecutionId`, or `CreatedAt` — Lunar owns those semantics. The
+Application layer constructs the `Artifact` with Lunar-owned identity and
+provenance from the executor's output description.
+
+The port is technology-neutral: it does not reference HTTP, JSON,
+provider SDKs, URLs, file paths, streams, cloud object keys, model
+names, vendor IDs, API keys, or engine types. A future Infrastructure
+adapter may implement it using a local model, remote AI provider,
+Blender process, or other production tool. No production executor
+implementation exists yet; deterministic test doubles are used in tests.
+
+The current invocation boundary returns exactly one logical output.
+Multi-output execution, capability-specific input schemas, prompt
+fields, physical output storage, provider selection, retry, and timeout
+are intentionally deferred to future concrete provider/capability slices.
+
 ### Workflow Definition
 
 A Workflow Definition is a reusable ordered process composed of Workflow
@@ -435,6 +466,46 @@ only Artifact ownership relative to the execution is checked. Artifact
 persistence remains insert-only; the service does not update, replace, or
 delete Artifacts.
 
+`ExecuteWorkflowStepService` is the fourth Application service. It invokes
+the capability referenced by one `WorkflowStep` and records its output as
+a Lunar-owned `Artifact`:
+
+- rejecting `stepPosition < 1` with `ArgumentException` before any
+  repository lookup;
+- loading the execution through `IWorkflowExecutionRepository.GetAsync`
+  (returns `WorkflowExecutionNotFound` if missing);
+- checking that the execution status is `Running` (returns
+  `WorkflowExecutionNotRunning` otherwise);
+- loading the exact `WorkflowDefinition` version recorded by the
+  execution through `IWorkflowDefinitionRepository.GetAsync` (returns
+  `WorkflowDefinitionNotFound` if the exact version is missing — no
+  latest-version fallback);
+- resolving the `WorkflowStep` whose `Position` equals the requested
+  `stepPosition` (returns `WorkflowStepNotFound` if no such step exists);
+- building a `CapabilityExecutionRequest` from authoritative loaded
+  state (`WorkflowStep.CapabilityId`, `execution.AssetId`,
+  `execution.Id`, `execution.WorkflowDefinitionId`,
+  `execution.WorkflowDefinitionVersion`, `step.Position`);
+- invoking `ICapabilityExecutor.ExecuteAsync` with the same
+  `CancellationToken` (unexpected executor exceptions propagate
+  unchanged; cancellation propagates as `OperationCanceledException`);
+- creating an `Artifact` with Lunar-owned identity (`ArtifactId.New()`),
+  Asset ownership (`execution.AssetId`), and execution provenance
+  (`execution.Id`) — the executor cannot supply or override
+  `ArtifactId`, `AssetId`, `SourceExecutionId`, or `CreatedAt`;
+- persisting the Artifact through `IArtifactRepository.TryAddAsync`
+  (returns `ArtifactPersistenceFailed` if the insert is rejected);
+- returning the created and persisted `Artifact` on success.
+
+The service does not mutate `WorkflowExecution` (no `Complete`, `Fail`,
+`Cancel`, or `TryUpdateAsync`). It does not maintain persistent per-step
+runtime state, advance a current-step pointer, or automatically progress
+to the next step. Repeated calls for the same
+`(WorkflowExecutionId, StepPosition)` may invoke the capability again and
+produce another Artifact — there is no idempotency or one-shot semantic
+yet. The service depends on `ICapabilityExecutor` directly; no provider
+selection, registry, or resolver is introduced.
+
 Application services use a Result pattern for expected use-case outcomes.
 `Result<T>` is owned by `Lunar.Application` and does not leak into Core.
 `Result<T>.Success(value)` represents a successful outcome;
@@ -442,7 +513,8 @@ Application services use a Result pattern for expected use-case outcomes.
 Application errors (`AssetNotFound`, `WorkflowDefinitionNotFound`,
 `WorkflowExecutionPersistenceFailed`, `WorkflowExecutionNotFound`,
 `WorkflowExecutionConcurrencyConflict`, `WorkflowExecutionCannotStart`,
-`WorkflowExecutionNotRunning`, `ArtifactWorkflowProvenanceMissing`,
+`WorkflowExecutionNotRunning`, `WorkflowStepNotFound`,
+`ArtifactWorkflowProvenanceMissing`,
 `ArtifactWorkflowExecutionMismatch`, `ArtifactWorkflowAssetMismatch`,
 `ArtifactPersistenceFailed`) are sealed records inheriting from
 `ApplicationError`. They represent failed use-case execution, not domain
@@ -451,13 +523,14 @@ exceptions or programmer errors.
 Exception policy:
 
 - Invalid caller/programmer usage (null dependencies, null Artifact,
-  invalid domain construction, negative expected revision) remains
-  exception-based.
+  invalid domain construction, negative expected revision, step position
+  less than one) remains exception-based.
 - Expected use-case outcomes (asset not found, definition not found,
   persistence rejected, execution not found, concurrency conflict,
-  cannot start, execution not running, artifact provenance missing,
-  artifact provenance mismatch, artifact asset mismatch, artifact
-  persistence rejected) are returned as `Result` failures, not thrown.
+  cannot start, execution not running, workflow step not found, artifact
+  provenance missing, artifact provenance mismatch, artifact asset
+  mismatch, artifact persistence rejected) are returned as `Result`
+  failures, not thrown.
 
 ## Design Rules
 

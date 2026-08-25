@@ -14,9 +14,14 @@ The `Result<T>` type and `ApplicationError` hierarchy belong exclusively to
 Lunar.Application
     Result<T>
     ApplicationError
+    AssetNotFound
     WorkflowDefinitionNotFound
     WorkflowExecutionPersistenceFailed
+    WorkflowExecutionNotFound
+    WorkflowExecutionConcurrencyConflict
+    WorkflowExecutionCannotStart
     WorkflowExecutionNotRunning
+    WorkflowStepNotFound
     ArtifactWorkflowProvenanceMissing
     ArtifactWorkflowExecutionMismatch
     ArtifactWorkflowAssetMismatch
@@ -62,6 +67,7 @@ WorkflowExecutionNotFound
 WorkflowExecutionConcurrencyConflict
 WorkflowExecutionCannotStart
 WorkflowExecutionNotRunning
+WorkflowStepNotFound
 WorkflowExecutionPersistenceFailed
 ArtifactWorkflowProvenanceMissing
 ArtifactWorkflowExecutionMismatch
@@ -157,7 +163,10 @@ Current concrete errors:
 -   `WorkflowExecutionCannotStart` — the Workflow Execution exists but
     cannot be started from its current lifecycle state;
 -   `WorkflowExecutionNotRunning` — the Workflow Execution exists but is
-    not in the `Running` status required for recording workflow output;
+    not in the `Running` status required for recording workflow output or
+    invoking a workflow step capability;
+-   `WorkflowStepNotFound` — the requested positive step position does
+    not exist in the exact referenced Workflow Definition version;
 -   `ArtifactWorkflowProvenanceMissing` — the Artifact carries no
     `SourceExecutionId`, so it cannot be recorded as workflow output;
 -   `ArtifactWorkflowExecutionMismatch` — the Artifact's

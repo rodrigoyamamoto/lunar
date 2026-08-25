@@ -379,6 +379,37 @@ because only Artifact ownership relative to the execution is checked.
 Artifact persistence remains insert-only; the service does not update,
 replace, or delete Artifacts.
 
+`ExecuteWorkflowStepService` invokes the capability referenced by one
+`WorkflowStep` and records its output as a Lunar-owned `Artifact`. The
+service:
+
+-   rejects `stepPosition < 1` with `ArgumentException` before any
+    repository lookup;
+-   loads the `WorkflowExecution` (returns `WorkflowExecutionNotFound`
+    if missing);
+-   requires `Running` status (returns `WorkflowExecutionNotRunning`
+    otherwise);
+-   loads the exact `WorkflowDefinition` version recorded by the
+    execution (returns `WorkflowDefinitionNotFound` if the exact version
+    is missing — no latest-version fallback);
+-   resolves the `WorkflowStep` by semantic `Position` (returns
+    `WorkflowStepNotFound` if no such step exists);
+-   builds a `CapabilityExecutionRequest` from authoritative loaded
+    state;
+-   invokes `ICapabilityExecutor.ExecuteAsync` (unexpected exceptions
+    propagate; cancellation propagates as `OperationCanceledException`);
+-   creates an `Artifact` with Lunar-owned `ArtifactId`, `AssetId`, and
+    `SourceExecutionId` — the executor cannot supply or override these;
+-   persists the Artifact through `IArtifactRepository.TryAddAsync`
+    (returns `ArtifactPersistenceFailed` if rejected);
+-   returns the created and persisted `Artifact` on success.
+
+The service does not mutate `WorkflowExecution`. It does not maintain
+persistent per-step runtime state, advance a current-step pointer, or
+automatically progress to the next step. Repeated calls for the same
+`(WorkflowExecutionId, StepPosition)` may invoke the capability again
+and produce another Artifact — there is no idempotency semantic yet.
+
 ## Future Evolution
 
 Possible future concepts:
