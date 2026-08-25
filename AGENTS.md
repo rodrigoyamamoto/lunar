@@ -289,8 +289,12 @@ Created ──> Running ──> Completed
 ```
 
 Invalid transition requests currently leave the state unchanged. Terminal
-states cannot restart. Workflow Execution does not execute the definition; it
-does not yet model retries, scheduling, or an orchestration engine.
+states cannot restart. Lifecycle transitions are owned by Core: the
+`WorkflowExecution` entity exposes `Start`, `Complete`, `Fail`, and `Cancel`
+methods that enforce valid state changes and timestamp updates. Application
+may request transitions but cannot directly set `Status`, `StartedAt`, or
+`CompletedAt`. Workflow Execution does not execute the definition; it does
+not yet model retries, scheduling, or an orchestration engine.
 
 `WorkflowExecution.Rehydrate` is a narrowly scoped reconstruction factory for
 persistence. It accepts all persisted fields including `Revision` and

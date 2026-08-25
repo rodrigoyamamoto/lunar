@@ -238,6 +238,320 @@ public class WorkflowExecutionTests
 
 
     [Fact]
+    public void Start_ShouldNotRestartFailedExecution()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        execution.Fail();
+
+        execution.Start();
+
+        Assert.Equal(WorkflowExecutionStatus.Failed, execution.Status);
+    }
+
+
+    [Fact]
+    public void Start_ShouldNotRestartCancelledExecution()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        execution.Cancel();
+
+        execution.Start();
+
+        Assert.Equal(WorkflowExecutionStatus.Cancelled, execution.Status);
+    }
+
+
+    [Fact]
+    public void Start_ShouldNotChangeRunningExecution()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        var startedAtBefore = execution.StartedAt;
+
+        execution.Start();
+
+        Assert.Equal(WorkflowExecutionStatus.Running, execution.Status);
+        Assert.Equal(startedAtBefore, execution.StartedAt);
+    }
+
+
+    [Fact]
+    public void Fail_ShouldNotChangeCreatedExecution()
+    {
+        var execution = CreateExecution();
+
+        execution.Fail();
+
+        Assert.Equal(WorkflowExecutionStatus.Created, execution.Status);
+        Assert.Null(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Cancel_ShouldNotChangeCreatedExecution()
+    {
+        var execution = CreateExecution();
+
+        execution.Cancel();
+
+        Assert.Equal(WorkflowExecutionStatus.Created, execution.Status);
+        Assert.Null(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Complete_ShouldNotChangeFailedExecution()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        execution.Fail();
+        var completedAtBefore = execution.CompletedAt;
+
+        execution.Complete();
+
+        Assert.Equal(WorkflowExecutionStatus.Failed, execution.Status);
+        Assert.Equal(completedAtBefore, execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Complete_ShouldNotChangeCancelledExecution()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        execution.Cancel();
+        var completedAtBefore = execution.CompletedAt;
+
+        execution.Complete();
+
+        Assert.Equal(WorkflowExecutionStatus.Cancelled, execution.Status);
+        Assert.Equal(completedAtBefore, execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Fail_ShouldNotChangeCompletedExecution()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        execution.Complete();
+        var completedAtBefore = execution.CompletedAt;
+
+        execution.Fail();
+
+        Assert.Equal(WorkflowExecutionStatus.Completed, execution.Status);
+        Assert.Equal(completedAtBefore, execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Fail_ShouldNotChangeCancelledExecution()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        execution.Cancel();
+        var completedAtBefore = execution.CompletedAt;
+
+        execution.Fail();
+
+        Assert.Equal(WorkflowExecutionStatus.Cancelled, execution.Status);
+        Assert.Equal(completedAtBefore, execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Cancel_ShouldNotChangeCompletedExecution()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        execution.Complete();
+        var completedAtBefore = execution.CompletedAt;
+
+        execution.Cancel();
+
+        Assert.Equal(WorkflowExecutionStatus.Completed, execution.Status);
+        Assert.Equal(completedAtBefore, execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Cancel_ShouldNotChangeFailedExecution()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        execution.Fail();
+        var completedAtBefore = execution.CompletedAt;
+
+        execution.Cancel();
+
+        Assert.Equal(WorkflowExecutionStatus.Failed, execution.Status);
+        Assert.Equal(completedAtBefore, execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Start_ShouldNotOverwriteStartedAtOnRepeatedCall()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        var startedAtOriginal = execution.StartedAt;
+
+        execution.Start();
+
+        Assert.Equal(startedAtOriginal, execution.StartedAt);
+    }
+
+
+    [Fact]
+    public void Complete_ShouldNotOverwriteCompletedAtOnRepeatedCall()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        execution.Complete();
+        var completedAtOriginal = execution.CompletedAt;
+
+        execution.Complete();
+
+        Assert.Equal(completedAtOriginal, execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Start_ThenComplete_ShouldPreserveStartedAt()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        var startedAtOriginal = execution.StartedAt;
+
+        execution.Complete();
+
+        Assert.Equal(startedAtOriginal, execution.StartedAt);
+        Assert.NotNull(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Start_ThenFail_ShouldPreserveStartedAt()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        var startedAtOriginal = execution.StartedAt;
+
+        execution.Fail();
+
+        Assert.Equal(startedAtOriginal, execution.StartedAt);
+        Assert.NotNull(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Start_ThenCancel_ShouldPreserveStartedAt()
+    {
+        var execution = CreateExecution();
+        execution.Start();
+        var startedAtOriginal = execution.StartedAt;
+
+        execution.Cancel();
+
+        Assert.Equal(startedAtOriginal, execution.StartedAt);
+        Assert.NotNull(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Complete_InvalidTransition_ShouldNotSetCompletedAt()
+    {
+        var execution = CreateExecution();
+
+        execution.Complete();
+
+        Assert.Null(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Fail_InvalidTransition_ShouldNotSetCompletedAt()
+    {
+        var execution = CreateExecution();
+
+        execution.Fail();
+
+        Assert.Null(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void Cancel_InvalidTransition_ShouldNotSetCompletedAt()
+    {
+        var execution = CreateExecution();
+
+        execution.Cancel();
+
+        Assert.Null(execution.CompletedAt);
+    }
+
+
+    [Fact]
+    public void TerminalState_ShouldRejectAllTransitions()
+    {
+        var terminalStates = new[]
+        {
+            (WorkflowExecutionStatus.Completed, "Completed"),
+            (WorkflowExecutionStatus.Failed, "Failed"),
+            (WorkflowExecutionStatus.Cancelled, "Cancelled")
+        };
+
+        foreach (var (status, name) in terminalStates)
+        {
+            var execution = CreateExecution();
+            execution.Start();
+
+            if (status == WorkflowExecutionStatus.Completed)
+                execution.Complete();
+            else if (status == WorkflowExecutionStatus.Failed)
+                execution.Fail();
+            else
+                execution.Cancel();
+
+            var statusBefore = execution.Status;
+            var startedAtBefore = execution.StartedAt;
+            var completedAtBefore = execution.CompletedAt;
+
+            execution.Start();
+            Assert.Equal(statusBefore, execution.Status);
+
+            execution.Complete();
+            Assert.Equal(statusBefore, execution.Status);
+
+            execution.Fail();
+            Assert.Equal(statusBefore, execution.Status);
+
+            execution.Cancel();
+            Assert.Equal(statusBefore, execution.Status);
+
+            Assert.Equal(startedAtBefore, execution.StartedAt);
+            Assert.Equal(completedAtBefore, execution.CompletedAt);
+        }
+    }
+
+
+    [Fact]
+    public void LifecycleTransitions_ShouldNotChangeRevision()
+    {
+        var execution = CreateExecution();
+        Assert.Equal(0, execution.Revision);
+
+        execution.Start();
+        Assert.Equal(0, execution.Revision);
+
+        execution.Complete();
+        Assert.Equal(0, execution.Revision);
+    }
+
+
+    [Fact]
     public void Create_ShouldInitializeRevisionToZero()
     {
         var execution = CreateExecution();

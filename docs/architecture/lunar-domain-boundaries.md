@@ -181,6 +181,15 @@ Execution contains lifecycle information:
 -   failed
 -   cancelled
 
+Lifecycle transitions are owned by Core. The `WorkflowExecution` entity
+exposes explicit intent methods (`Start`, `Complete`, `Fail`, `Cancel`)
+that enforce valid state transitions. Invalid transitions are no-ops.
+Terminal states reject all transitions. Application may request
+transitions but cannot directly set `Status`, `StartedAt`, or
+`CompletedAt`. See
+[Workflow Execution Model](./workflow-execution-model.md) for the
+complete state machine.
+
 ------------------------------------------------------------------------
 
 # Application Layer

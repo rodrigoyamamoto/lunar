@@ -96,6 +96,72 @@ Initial statuses:
 
 The model should evolve only when real requirements appear.
 
+### Lifecycle State Machine
+
+Lifecycle rules are owned by `Lunar.Core`. The `WorkflowExecution` entity
+exposes explicit intent methods that enforce valid transitions. No
+external setter for `Status`, `StartedAt`, or `CompletedAt` exists.
+
+Valid states and transitions:
+
+```text
+Created
+   |
+   v
+Running
+   |
+   +--> Completed
+   |
+   +--> Failed
+   |
+   +--> Cancelled
+```
+
+Allowed transitions:
+
+```text
+Created  --> Running    (Start)
+Running  --> Completed   (Complete)
+Running  --> Failed      (Fail)
+Running  --> Cancelled   (Cancel)
+```
+
+All other transitions are invalid. Invalid transition requests are
+no-ops: the entity state, timestamps, and revision remain unchanged.
+Terminal states (`Completed`, `Failed`, `Cancelled`) reject all
+transitions.
+
+Transition invariants:
+
+-   `Start` is valid only from `Created`. It sets `StartedAt` to the
+    current UTC time. It does not change `Revision`.
+-   `Complete` is valid only from `Running`. It sets `CompletedAt` to the
+    current UTC time. It does not change `Revision` or `StartedAt`.
+-   `Fail` is valid only from `Running`. It sets `CompletedAt` to the
+    current UTC time. It does not change `Revision` or `StartedAt`.
+-   `Cancel` is valid only from `Running`. It sets `CompletedAt` to the
+    current UTC time. It does not change `Revision` or `StartedAt`.
+
+Timestamp rules:
+
+-   `Created`: `StartedAt = null`, `CompletedAt = null`;
+-   `Running`: `StartedAt != null`, `CompletedAt = null`;
+-   terminal (`Completed`/`Failed`/`Cancelled`): both `StartedAt != null`
+    and `CompletedAt != null`.
+
+Invalid transitions do not modify timestamps. Repeated valid calls from
+the same state are no-ops and do not overwrite timestamps.
+
+Ownership:
+
+-   Core owns lifecycle rules, transition validation, and timestamp
+    management.
+-   Application may request transitions by calling `Start`, `Complete`,
+    `Fail`, or `Cancel`. The domain decides whether the transition is
+    valid.
+-   Application does not directly set `Status`, `StartedAt`, or
+    `CompletedAt`.
+
 ## Relationship With Artifacts
 
 Workflow executions produce artifacts.
