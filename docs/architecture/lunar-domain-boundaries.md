@@ -162,11 +162,12 @@ The implementation behind a capability can change.
 that bridges a `WorkflowStep.CapabilityId` to an actual invocation. It
 receives a `CapabilityExecutionRequest` (authoritative Lunar execution
 context and a typed `CapabilityExecutionInput`) and returns a
-`CapabilityExecutionOutput` (one logical Artifact output description).
-The executor does not own `ArtifactId`, `AssetId`, `SourceExecutionId`,
-or `CreatedAt` — Lunar assigns those when constructing the `Artifact`.
-No production executor implementation exists yet; the first real
-Infrastructure adapter will be supplied by a future provider slice.
+`CapabilityExecutionOutput` (one logical Artifact output description
+with physical `ArtifactContent`). The executor does not own
+`ArtifactId`, `AssetId`, `SourceExecutionId`, or `CreatedAt` — Lunar
+assigns those when constructing the `Artifact`. No production executor
+implementation exists yet; the first real Infrastructure adapter will be
+supplied by a future provider slice.
 
 `CapabilityExecutionInput` is a minimal abstract record that serves as
 the typed capability-input family carried by `CapabilityExecutionRequest`.
@@ -182,11 +183,34 @@ valid prompt is preserved exactly without trimming or normalization.
 field required by every future capability. Future capability input types
 may be introduced only when concrete product requirements justify them.
 
+`ArtifactContent` is a minimal abstract record that serves as the
+provider-independent physical-content family carried by
+`CapabilityExecutionOutput`. It exists so the capability execution
+boundary can carry actual produced bytes, not just metadata, while
+remaining independent of any specific provider, storage system, file
+API, or transport.
+
+`BinaryArtifactContent` is the first concrete `ArtifactContent`. It
+holds in-memory binary bytes plus a provider-independent `MediaType`
+string. It owns a defensive copy of caller-supplied bytes and rejects
+null/empty data and null/empty/whitespace media type. No file path,
+URL, blob key, stream, hash, or storage location is present.
+
+`ProducedArtifact` is an Application-layer use-case result that pairs
+the persisted `Artifact` metadata with the in-memory `ArtifactContent`.
+It is not a domain aggregate and has no repository. The physical content
+is in-memory only; it is not durably stored, may be lost if the process
+exits, and may be lost if a later Application step fails after the
+executor produced content. Durable content storage is a future slice.
+
 Capability input is currently passed to the executor in-memory for the
 invocation and is not yet persisted as historical per-step invocation
 state. Lunar does not yet have a historical input snapshot for each
 invocation; full invocation reconstruction and input audit trails remain
-a future requirement.
+a future requirement. Physical content is similarly in-memory only and
+not yet durably persisted; one logical Artifact currently carries one
+`ArtifactContent`. Multi-file bundles, streaming, chunking, and large-
+output modeling are deferred to future slices.
 
 ------------------------------------------------------------------------
 

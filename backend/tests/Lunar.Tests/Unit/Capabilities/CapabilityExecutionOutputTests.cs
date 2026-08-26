@@ -5,13 +5,18 @@ namespace Lunar.Tests.Unit.Capabilities;
 
 public class CapabilityExecutionOutputTests
 {
+    private static readonly ArtifactContent ValidContent =
+        new BinaryArtifactContent(new byte[] { 0x00, 0x01, 0x7F }, "image/png");
+
+
     [Fact]
     public void Constructor_ValidValues_ShouldPreserveNameAndType()
     {
         var output = new CapabilityExecutionOutput(
             "knight-concept.png",
             ArtifactType.ConceptImage,
-            Array.Empty<ArtifactId>());
+            Array.Empty<ArtifactId>(),
+            ValidContent);
 
         Assert.Equal("knight-concept.png", output.ArtifactName);
         Assert.Equal(ArtifactType.ConceptImage, output.ArtifactType);
@@ -25,7 +30,8 @@ public class CapabilityExecutionOutputTests
             new CapabilityExecutionOutput(
                 null!,
                 ArtifactType.ConceptImage,
-                Array.Empty<ArtifactId>()));
+                Array.Empty<ArtifactId>(),
+                ValidContent));
     }
 
 
@@ -36,7 +42,8 @@ public class CapabilityExecutionOutputTests
             new CapabilityExecutionOutput(
                 "name.png",
                 ArtifactType.ConceptImage,
-                null!));
+                null!,
+                ValidContent));
     }
 
 
@@ -46,7 +53,8 @@ public class CapabilityExecutionOutputTests
         var output = new CapabilityExecutionOutput(
             "",
             ArtifactType.ConceptImage,
-            Array.Empty<ArtifactId>());
+            Array.Empty<ArtifactId>(),
+            ValidContent);
 
         Assert.Equal("", output.ArtifactName);
     }
@@ -58,7 +66,8 @@ public class CapabilityExecutionOutputTests
         var output = new CapabilityExecutionOutput(
             "   ",
             ArtifactType.ConceptImage,
-            Array.Empty<ArtifactId>());
+            Array.Empty<ArtifactId>(),
+            ValidContent);
 
         Assert.Equal("   ", output.ArtifactName);
     }
@@ -74,7 +83,8 @@ public class CapabilityExecutionOutputTests
         var output = new CapabilityExecutionOutput(
             "name.png",
             ArtifactType.ConceptImage,
-            new[] { a, b, c });
+            new[] { a, b, c },
+            ValidContent);
 
         Assert.Equal(3, output.SourceArtifactIds.Count);
         Assert.Equal(a, output.SourceArtifactIds[0]);
@@ -90,7 +100,8 @@ public class CapabilityExecutionOutputTests
         var output = new CapabilityExecutionOutput(
             "name.png",
             ArtifactType.ConceptImage,
-            sourceIds);
+            sourceIds,
+            ValidContent);
 
         sourceIds.Add(ArtifactId.New());
         sourceIds.RemoveAt(0);
@@ -105,10 +116,40 @@ public class CapabilityExecutionOutputTests
         var output = new CapabilityExecutionOutput(
             "name.png",
             ArtifactType.ConceptImage,
-            new[] { ArtifactId.New() });
+            new[] { ArtifactId.New() },
+            ValidContent);
 
         Assert.IsAssignableFrom<IReadOnlyList<ArtifactId>>(output.SourceArtifactIds);
         Assert.Throws<NotSupportedException>(() =>
             ((ICollection<ArtifactId>)output.SourceArtifactIds).Add(ArtifactId.New()));
+    }
+
+
+    [Fact]
+    public void Constructor_NullContent_ShouldThrow()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new CapabilityExecutionOutput(
+                "name.png",
+                ArtifactType.ConceptImage,
+                Array.Empty<ArtifactId>(),
+                null!));
+    }
+
+
+    [Fact]
+    public void Constructor_ValidContent_ShouldPreserveExactContentInstance()
+    {
+        var content = new BinaryArtifactContent(
+            new byte[] { 0xFF, 0xFE, 0x00 },
+            "image/webp");
+
+        var output = new CapabilityExecutionOutput(
+            "name.png",
+            ArtifactType.ConceptImage,
+            Array.Empty<ArtifactId>(),
+            content);
+
+        Assert.Same(content, output.Content);
     }
 }

@@ -1,3 +1,4 @@
+using Lunar.Application.Artifacts;
 using Lunar.Application.Errors;
 using Lunar.Core.Artifacts;
 using Lunar.Core.Capabilities;
@@ -30,7 +31,7 @@ public sealed class ExecuteWorkflowStepService
     }
 
 
-    public async Task<Result<Artifact>> ExecuteAsync(
+    public async Task<Result<ProducedArtifact>> ExecuteAsync(
         WorkflowExecutionId workflowExecutionId,
         int stepPosition,
         CapabilityExecutionInput input,
@@ -51,13 +52,13 @@ public sealed class ExecuteWorkflowStepService
 
         if (execution is null)
         {
-            return Result<Artifact>.Failure(
+            return Result<ProducedArtifact>.Failure(
                 new WorkflowExecutionNotFound(workflowExecutionId));
         }
 
         if (execution.Status != WorkflowExecutionStatus.Running)
         {
-            return Result<Artifact>.Failure(
+            return Result<ProducedArtifact>.Failure(
                 new WorkflowExecutionNotRunning(
                     workflowExecutionId,
                     execution.Status));
@@ -70,7 +71,7 @@ public sealed class ExecuteWorkflowStepService
 
         if (definition is null)
         {
-            return Result<Artifact>.Failure(
+            return Result<ProducedArtifact>.Failure(
                 new WorkflowDefinitionNotFound(
                     execution.WorkflowDefinitionId,
                     execution.WorkflowDefinitionVersion));
@@ -80,7 +81,7 @@ public sealed class ExecuteWorkflowStepService
 
         if (step.Position != stepPosition)
         {
-            return Result<Artifact>.Failure(
+            return Result<ProducedArtifact>.Failure(
                 new WorkflowStepNotFound(
                     definition.Id,
                     definition.Version,
@@ -120,10 +121,11 @@ public sealed class ExecuteWorkflowStepService
 
         if (!persisted)
         {
-            return Result<Artifact>.Failure(
+            return Result<ProducedArtifact>.Failure(
                 new ArtifactPersistenceFailed(artifact.Id));
         }
 
-        return Result<Artifact>.Success(artifact);
+        return Result<ProducedArtifact>.Success(
+            new ProducedArtifact(artifact, output.Content));
     }
 }

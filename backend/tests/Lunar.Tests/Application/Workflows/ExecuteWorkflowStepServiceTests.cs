@@ -1,4 +1,5 @@
 using Lunar.Application;
+using Lunar.Application.Artifacts;
 using Lunar.Application.Errors;
 using Lunar.Application.Workflows;
 using Lunar.Core.Artifacts;
@@ -15,6 +16,9 @@ public class ExecuteWorkflowStepServiceTests
 
     private static readonly CapabilityExecutionInput SharedInput =
         new TextPromptInput("Generate a dark fantasy raven shrine.");
+
+    private static readonly ArtifactContent SharedContent =
+        new BinaryArtifactContent(new byte[] { 0x00, 0x01, 0x7F, 0x80, 0xFE, 0xFF }, "image/png");
 
 
     private static WorkflowDefinition CreateDefinition(
@@ -140,7 +144,7 @@ public class ExecuteWorkflowStepServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
-        Assert.NotEqual(Guid.Empty, result.Value!.Id.Value);
+        Assert.NotEqual(Guid.Empty, result.Value!.Artifact.Id.Value);
     }
 
 
@@ -280,7 +284,7 @@ public class ExecuteWorkflowStepServiceTests
         var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsSuccess);
-        var artifact = result.Value!;
+        var artifact = result.Value!.Artifact;
         Assert.NotEqual(Guid.Empty, artifact.Id.Value);
         Assert.Equal(execution.AssetId, artifact.AssetId);
         Assert.Equal(execution.Id, artifact.SourceExecutionId);
@@ -321,7 +325,7 @@ public class ExecuteWorkflowStepServiceTests
         var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsSuccess);
-        var artifact = result.Value!;
+        var artifact = result.Value!.Artifact;
         Assert.Equal("Ancient  Gate Texture", artifact.Name);
         Assert.Equal(ArtifactType.Texture, artifact.Type);
         Assert.Equal(3, artifact.SourceArtifactIds.Count);
@@ -363,12 +367,128 @@ public class ExecuteWorkflowStepServiceTests
         var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsSuccess);
-        var retrieved = await artifactRepository.GetAsync(result.Value!.Id);
+        var retrieved = await artifactRepository.GetAsync(result.Value!.Artifact.Id);
         Assert.NotNull(retrieved);
         Assert.Equal("persisted-concept.png", retrieved!.Name);
         Assert.Equal(ArtifactType.ConceptImage, retrieved.Type);
         Assert.Equal(execution.AssetId, retrieved.AssetId);
         Assert.Equal(execution.Id, retrieved.SourceExecutionId);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_Success_ShouldReturnProducedArtifactWithExecutorContent()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var content = new BinaryArtifactContent(
+            new byte[] { 0x00, 0x01, 0x7F, 0x80, 0xFE, 0xFF },
+            "image/png");
+        var executor = new StubCapabilityExecutor(
+            "knight-concept.png",
+            ArtifactType.ConceptImage,
+            content: content);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsSuccess);
+        Assert.IsType<ProducedArtifact>(result.Value);
+        Assert.Same(content, result.Value!.Content);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_Success_ShouldPreserveExactBinaryContentBytes()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var expectedBytes = new byte[] { 0x00, 0x01, 0x7F, 0x80, 0xFE, 0xFF };
+        var content = new BinaryArtifactContent(expectedBytes, "image/png");
+        var executor = new StubCapabilityExecutor(
+            "knight-concept.png",
+            ArtifactType.ConceptImage,
+            content: content);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsSuccess);
+        var binaryContent = Assert.IsType<BinaryArtifactContent>(result.Value!.Content);
+        Assert.Equal(expectedBytes, binaryContent.Data.ToArray());
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_Success_ShouldPreserveExactMediaType()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var content = new BinaryArtifactContent(
+            new byte[] { 0x00, 0x01 },
+            "image/webp");
+        var executor = new StubCapabilityExecutor(
+            "knight-concept.png",
+            ArtifactType.ConceptImage,
+            content: content);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsSuccess);
+        var binaryContent = Assert.IsType<BinaryArtifactContent>(result.Value!.Content);
+        Assert.Equal("image/webp", binaryContent.MediaType);
     }
 
 
@@ -916,7 +1036,9 @@ public class ExecuteWorkflowStepServiceTests
         var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsFailure);
-        Assert.IsType<ArtifactPersistenceFailed>(result.Error);
+        var error = Assert.IsType<ArtifactPersistenceFailed>(result.Error);
+        Assert.NotNull(rejectingArtifactRepository.CapturedArtifact);
+        Assert.Equal(rejectingArtifactRepository.CapturedArtifact!.Id, error.ArtifactId);
     }
 
 
@@ -985,7 +1107,7 @@ public class ExecuteWorkflowStepServiceTests
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
-        Assert.NotEqual(first.Value!.Id, second.Value!.Id);
+        Assert.NotEqual(first.Value!.Artifact.Id, second.Value!.Artifact.Id);
     }
 
 
@@ -1051,12 +1173,14 @@ public class ExecuteWorkflowStepServiceTests
         public StubCapabilityExecutor(
             string artifactName = "test-output.png",
             ArtifactType artifactType = ArtifactType.ConceptImage,
-            IEnumerable<ArtifactId>? sourceArtifactIds = null)
+            IEnumerable<ArtifactId>? sourceArtifactIds = null,
+            ArtifactContent? content = null)
         {
             _output = new CapabilityExecutionOutput(
                 artifactName,
                 artifactType,
-                sourceArtifactIds ?? Array.Empty<ArtifactId>());
+                sourceArtifactIds ?? Array.Empty<ArtifactId>(),
+                content ?? SharedContent);
         }
 
 
@@ -1115,7 +1239,8 @@ public class ExecuteWorkflowStepServiceTests
             return Task.FromResult(new CapabilityExecutionOutput(
                 "cancelled.png",
                 ArtifactType.ConceptImage,
-                Array.Empty<ArtifactId>()));
+                Array.Empty<ArtifactId>(),
+                SharedContent));
         }
     }
 
@@ -1198,12 +1323,16 @@ public class ExecuteWorkflowStepServiceTests
 
     private sealed class RejectingArtifactRepository : IArtifactRepository
     {
+        public Artifact? CapturedArtifact { get; private set; }
+
         public Task<bool> TryAddAsync(
             Artifact artifact,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(artifact);
             cancellationToken.ThrowIfCancellationRequested();
+
+            CapturedArtifact = artifact;
 
             return Task.FromResult(false);
         }

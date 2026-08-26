@@ -8,9 +8,9 @@ current task, then expand the survey if this guide is stale or incomplete.
 
 ## Survey Metadata
 
-- Last surveyed: 2026-08-25
-- Survey baseline: `bf8ae39` (`feat: add workflow capability execution boundary`)
-- Baseline validation: restore/build/test passed, 338 tests, 0 warnings
+- Last surveyed: 2026-08-26
+- Survey baseline: `59063bc` (`feat: add text prompt capability input`)
+- Baseline validation: restore/build/test passed, 350 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -56,6 +56,9 @@ Implemented:
 - `CapabilityExecutionOutput` Core logical Artifact output description;
 - `CapabilityExecutionInput` Core abstract typed capability input base;
 - `TextPromptInput` Core concrete textual creative-intent capability input;
+- `ArtifactContent` Core abstract physical content family;
+- `BinaryArtifactContent` Core concrete binary physical content;
+- `ProducedArtifact` Application use-case result pairing Artifact metadata with in-memory content;
 - `WorkflowStepNotFound` Application error;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
@@ -288,7 +291,8 @@ receives a `CapabilityExecutionRequest` (authoritative Lunar execution
 context: `CapabilityId`, `AssetId`, `WorkflowExecutionId`,
 `WorkflowDefinitionId`, `WorkflowDefinitionVersion`, `StepPosition`,
 `Input`) and returns one `CapabilityExecutionOutput` (logical Artifact
-output description: `ArtifactName`, `ArtifactType`, `SourceArtifactIds`).
+output description: `ArtifactName`, `ArtifactType`, `SourceArtifactIds`,
+`Content`).
 
 `CapabilityExecutionInput` is a minimal abstract record that serves as
 the typed capability-input family carried by `CapabilityExecutionRequest`.
@@ -310,10 +314,42 @@ when concrete product requirements justify them. No negative prompt,
 dimensions, seed, style, model, or other image-generation parameters are
 present; those belong to future concrete capability/provider slices.
 
+`ArtifactContent` is a minimal abstract record that serves as the
+provider-independent physical-content family carried by
+`CapabilityExecutionOutput`. It exists so the capability execution
+boundary can carry actual produced bytes, not just metadata, while
+remaining independent of any specific provider, storage system, file
+API, or transport. It carries no behavior, no discriminator, no
+serialization contract, and no storage location.
+
+`BinaryArtifactContent` is the first and currently only concrete
+`ArtifactContent`. It holds in-memory binary bytes (`ReadOnlyMemory<byte>`)
+plus a provider-independent `MediaType` string (e.g. `image/png`,
+`model/gltf-binary`). It owns a defensive copy of caller-supplied bytes;
+caller mutation after construction does not alter the stored content. It
+rejects null/empty data, null/empty/whitespace media type, and preserves
+a valid media type exactly without normalization. No file path, URL,
+blob key, stream, hash, checksum, size limit, or storage location is
+present. `BinaryArtifactContent` is one concrete content representation,
+not a universal format for all future content types.
+
 The executor does not create `ArtifactId`, `AssetId`,
 `SourceExecutionId`, or `CreatedAt` — Lunar owns those semantics. The
 Application layer constructs the `Artifact` with Lunar-owned identity and
-provenance from the executor's output description.
+provenance from the executor's output description. The executor's
+physical `Content` is returned alongside the persisted `Artifact` as a
+`ProducedArtifact` — it is not stored on the `Artifact` domain object
+and is not durably persisted in this slice.
+
+`ProducedArtifact` is an Application-layer use-case result that pairs the
+persisted `Artifact` metadata with the in-memory `ArtifactContent`. It is
+not a domain aggregate and has no repository. It exists so callers
+receive both the durable metadata identity and the physical output from
+a single successful capability execution. The physical content is
+in-memory only; it is not durably stored, may be lost if the process
+exits, and may be lost if a later Application step fails after the
+executor produced content but before the caller consumes it. Durable
+content storage is a future slice.
 
 Capability input is currently passed to the executor in-memory for the
 invocation and is not yet persisted as historical per-step invocation
@@ -328,11 +364,12 @@ adapter may implement it using a local model, remote AI provider,
 Blender process, or other production tool. No production executor
 implementation exists yet; deterministic test doubles are used in tests.
 
-The current invocation boundary returns exactly one logical output.
-Multi-output execution, capability-specific input schemas beyond
-`TextPromptInput`, physical output storage, provider selection, retry,
-and timeout are intentionally deferred to future concrete
-provider/capability slices.
+The current invocation boundary returns exactly one logical output with
+exactly one `ArtifactContent`. Multi-output execution, multi-file
+bundles, streaming, chunking, capability-specific input schemas beyond
+`TextPromptInput`, durable content storage, content hashing/deduplication,
+provider selection, retry, and timeout are intentionally deferred to
+future concrete provider/capability slices.
 
 ### Workflow Definition
 
@@ -497,7 +534,8 @@ delete Artifacts.
 
 `ExecuteWorkflowStepService` is the fourth Application service. It invokes
 the capability referenced by one `WorkflowStep` and records its output as
-a Lunar-owned `Artifact`:
+a Lunar-owned `Artifact`, returning a `ProducedArtifact` that pairs the
+persisted metadata with the in-memory physical content:
 
 - rejecting `stepPosition < 1` with `ArgumentException` before any
   repository lookup;
@@ -527,7 +565,9 @@ a Lunar-owned `Artifact`:
   `ArtifactId`, `AssetId`, `SourceExecutionId`, or `CreatedAt`;
 - persisting the Artifact through `IArtifactRepository.TryAddAsync`
   (returns `ArtifactPersistenceFailed` if the insert is rejected);
-- returning the created and persisted `Artifact` on success.
+- returning a `ProducedArtifact` pairing the persisted `Artifact` with
+  the executor's `CapabilityExecutionOutput.Content` (passed through
+  unchanged) on success.
 
 The service does not mutate `WorkflowExecution` (no `Complete`, `Fail`,
 `Cancel`, or `TryUpdateAsync`). It does not maintain persistent per-step
@@ -536,7 +576,9 @@ to the next step. Repeated calls for the same
 `(WorkflowExecutionId, StepPosition)` may invoke the capability again and
 produce another Artifact — there is no idempotency or one-shot semantic
 yet. The service depends on `ICapabilityExecutor` directly; no provider
-selection, registry, or resolver is introduced.
+selection, registry, or resolver is introduced. Physical content is
+returned in-memory only; it is not durably persisted, and may be lost if
+metadata persistence fails after the executor has produced content.
 
 Application services use a Result pattern for expected use-case outcomes.
 `Result<T>` is owned by `Lunar.Application` and does not leak into Core.

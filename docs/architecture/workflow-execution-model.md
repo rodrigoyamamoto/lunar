@@ -380,8 +380,9 @@ Artifact persistence remains insert-only; the service does not update,
 replace, or delete Artifacts.
 
 `ExecuteWorkflowStepService` invokes the capability referenced by one
-`WorkflowStep` and records its output as a Lunar-owned `Artifact`. The
-service:
+`WorkflowStep` and records its output as a Lunar-owned `Artifact`,
+returning a `ProducedArtifact` that pairs the persisted metadata with
+the in-memory physical content. The service:
 
 -   rejects `stepPosition < 1` with `ArgumentException` before any
     repository lookup;
@@ -405,7 +406,9 @@ service:
     `SourceExecutionId` — the executor cannot supply or override these;
 -   persists the Artifact through `IArtifactRepository.TryAddAsync`
     (returns `ArtifactPersistenceFailed` if rejected);
--   returns the created and persisted `Artifact` on success.
+-   returns a `ProducedArtifact` pairing the persisted `Artifact` with
+    the executor's `CapabilityExecutionOutput.Content` (passed through
+    unchanged) on success.
 
 The service does not mutate `WorkflowExecution`. It does not maintain
 persistent per-step runtime state, advance a current-step pointer, or
@@ -420,6 +423,17 @@ null check. The first concrete input is `TextPromptInput` (textual
 creative intent). Capability input is not persisted as historical
 per-step invocation state in this slice; Lunar does not yet have a
 historical input snapshot for each invocation.
+
+The executor returns a `CapabilityExecutionOutput` carrying physical
+`ArtifactContent`. The service passes the content through to the
+`ProducedArtifact` unchanged — it does not transform, clone, or
+re-encode it. The first concrete content type is `BinaryArtifactContent`
+(in-memory bytes plus `MediaType`). Physical content is in-memory only;
+it is not durably persisted, may be lost if the process exits, and may
+be lost if metadata persistence fails after the executor produced
+content. Durable content storage, streaming, chunking, multi-file
+bundles, and content hashing/deduplication are deferred to future
+slices. One logical Artifact currently carries one `ArtifactContent`.
 
 ## Future Evolution
 

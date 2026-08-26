@@ -13,18 +13,23 @@ public sealed class CapabilityExecutionOutput
 
     public IReadOnlyList<ArtifactId> SourceArtifactIds => _sourceArtifactIds;
 
+    public ArtifactContent Content { get; }
+
 
     public CapabilityExecutionOutput(
         string artifactName,
         ArtifactType artifactType,
-        IEnumerable<ArtifactId> sourceArtifactIds)
+        IEnumerable<ArtifactId> sourceArtifactIds,
+        ArtifactContent content)
     {
         ArgumentNullException.ThrowIfNull(artifactName);
         ArgumentNullException.ThrowIfNull(sourceArtifactIds);
+        ArgumentNullException.ThrowIfNull(content);
 
         _sourceArtifactIds = sourceArtifactIds.ToList().AsReadOnly();
 
         ArtifactName = artifactName;
         ArtifactType = artifactType;
+        Content = content;
     }
 }
