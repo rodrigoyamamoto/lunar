@@ -402,8 +402,13 @@ the in-memory physical content. The service:
     through unchanged);
 -   invokes `ICapabilityExecutor.ExecuteAsync` (unexpected exceptions
     propagate; cancellation propagates as `OperationCanceledException`);
--   creates an `Artifact` with Lunar-owned `ArtifactId`, `AssetId`, and
-    `SourceExecutionId` — the executor cannot supply or override these;
+-   on `CapabilityExecutionFailed`, returns `WorkflowStepExecutionFailed`
+    with the exact `WorkflowExecutionId`, `StepPosition`, and the validated
+    `CapabilityExecutionFailure` (carrying `Kind` and `RetryAfter`) — no
+    Artifact is constructed or persisted;
+-   on `CapabilityExecutionSucceeded`, creates an `Artifact` with Lunar-owned
+    `ArtifactId`, `AssetId`, and `SourceExecutionId` — the executor cannot
+    supply or override these;
 -   persists the Artifact through `IArtifactRepository.TryAddAsync`
     (returns `ArtifactPersistenceFailed` if rejected);
 -   returns a `ProducedArtifact` pairing the persisted `Artifact` with

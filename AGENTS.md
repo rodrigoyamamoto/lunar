@@ -9,8 +9,9 @@ current task, then expand the survey if this guide is stale or incomplete.
 ## Survey Metadata
 
 - Last surveyed: 2026-08-26
-- Survey baseline: `59063bc` (`feat: add text prompt capability input`)
-- Baseline validation: restore/build/test passed, 350 tests, 0 warnings
+- Survey baseline: `2f160f9` (`feat: add binary artifact content output`)
+- Baseline validation: restore/build/test passed, 367 tests, 0 warnings
+- Current remediated working-tree validation: 488 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -59,6 +60,14 @@ Implemented:
 - `ArtifactContent` Core abstract physical content family;
 - `BinaryArtifactContent` Core concrete binary physical content;
 - `ProducedArtifact` Application use-case result pairing Artifact metadata with in-memory content;
+- `CapabilityExecutionOutcome` Core abstract execution outcome (success/failure);
+- `CapabilityExecutionSucceeded` Core concrete successful outcome;
+- `CapabilityExecutionFailed` Core concrete failed outcome;
+- `CapabilityExecutionFailure` Core provider-independent failure data;
+- `CapabilityExecutionFailureKind` Core failure category enum;
+- `WorkflowStepExecutionFailed` Application error for failed capability execution;
+- `CloudflareWorkersAiTextToImageExecutor` Infrastructure concrete executor;
+- `CloudflareWorkersAiOptions` Infrastructure configuration;
 - `WorkflowStepNotFound` Application error;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
@@ -70,7 +79,7 @@ Still scaffolding or intentionally absent:
 
 - API endpoints beyond the template root endpoint;
 - durable persistence, database mappings, and ORM;
-- provider adapters;
+- additional provider adapters beyond Cloudflare Workers AI;
 - worker contracts and worker implementations;
 - workflow scheduling, retries, and orchestration engine;
 - runtime configuration implementations;
@@ -290,9 +299,11 @@ not carry provider, model, endpoint, or configuration information.
 receives a `CapabilityExecutionRequest` (authoritative Lunar execution
 context: `CapabilityId`, `AssetId`, `WorkflowExecutionId`,
 `WorkflowDefinitionId`, `WorkflowDefinitionVersion`, `StepPosition`,
-`Input`) and returns one `CapabilityExecutionOutput` (logical Artifact
-output description: `ArtifactName`, `ArtifactType`, `SourceArtifactIds`,
-`Content`).
+`Input`) and returns one `CapabilityExecutionOutcome` — either
+`CapabilityExecutionSucceeded` (wrapping a `CapabilityExecutionOutput`
+with `ArtifactName`, `ArtifactType`, `SourceArtifactIds`, `Content`) or
+`CapabilityExecutionFailed` (wrapping a `CapabilityExecutionFailure`
+with a provider-independent `Kind` and optional `RetryAfter`).
 
 `CapabilityExecutionInput` is a minimal abstract record that serves as
 the typed capability-input family carried by `CapabilityExecutionRequest`.
@@ -361,8 +372,14 @@ The port is technology-neutral: it does not reference HTTP, JSON,
 provider SDKs, URLs, file paths, streams, cloud object keys, model
 names, vendor IDs, API keys, or engine types. A future Infrastructure
 adapter may implement it using a local model, remote AI provider,
-Blender process, or other production tool. No production executor
-implementation exists yet; deterministic test doubles are used in tests.
+Blender process, or other production tool. The first production executor
+implementation is `CloudflareWorkersAiTextToImageExecutor` in
+`Lunar.Infrastructure`, targeting Cloudflare Workers AI
+`@cf/black-forest-labs/flux-1-schnell` for text-to-image generation.
+It translates Cloudflare HTTP responses, error codes, and transport
+failures into the provider-independent `CapabilityExecutionFailureKind`
+enum at the Infrastructure boundary. No Cloudflare type, model name,
+error code, or HTTP concept enters Core or Application.
 
 The current invocation boundary returns exactly one logical output with
 exactly one `ArtifactContent`. Multi-output execution, multi-file
@@ -559,7 +576,10 @@ persisted metadata with the in-memory physical content:
 - invoking `ICapabilityExecutor.ExecuteAsync` with the same
   `CancellationToken` (unexpected executor exceptions propagate
   unchanged; cancellation propagates as `OperationCanceledException`);
-- creating an `Artifact` with Lunar-owned identity (`ArtifactId.New()`),
+- on `CapabilityExecutionFailed`, returning `WorkflowStepExecutionFailed`
+  with the exact `WorkflowExecutionId`, `StepPosition`, failure `Kind`,
+  and `RetryAfter` — no Artifact is constructed or persisted;
+- on `CapabilityExecutionSucceeded`, creating an `Artifact` with Lunar-owned identity (`ArtifactId.New()`),
   Asset ownership (`execution.AssetId`), and execution provenance
   (`execution.Id`) — the executor cannot supply or override
   `ArtifactId`, `AssetId`, `SourceExecutionId`, or `CreatedAt`;

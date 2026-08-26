@@ -162,12 +162,16 @@ The implementation behind a capability can change.
 that bridges a `WorkflowStep.CapabilityId` to an actual invocation. It
 receives a `CapabilityExecutionRequest` (authoritative Lunar execution
 context and a typed `CapabilityExecutionInput`) and returns a
-`CapabilityExecutionOutput` (one logical Artifact output description
-with physical `ArtifactContent`). The executor does not own
-`ArtifactId`, `AssetId`, `SourceExecutionId`, or `CreatedAt` — Lunar
-assigns those when constructing the `Artifact`. No production executor
-implementation exists yet; the first real Infrastructure adapter will be
-supplied by a future provider slice.
+`CapabilityExecutionOutcome` — either `CapabilityExecutionSucceeded`
+(wrapping a `CapabilityExecutionOutput` with physical `ArtifactContent`)
+or `CapabilityExecutionFailed` (wrapping a `CapabilityExecutionFailure`
+with a provider-independent `Kind` and optional `RetryAfter`). The
+executor does not own `ArtifactId`, `AssetId`, `SourceExecutionId`, or
+`CreatedAt` — Lunar assigns those when constructing the `Artifact`. The
+first production executor is `CloudflareWorkersAiTextToImageExecutor` in
+`Lunar.Infrastructure`, targeting Cloudflare Workers AI
+`@cf/black-forest-labs/flux-1-schnell`. No Cloudflare type, model name,
+error code, or HTTP concept enters Core or Application.
 
 `CapabilityExecutionInput` is a minimal abstract record that serves as
 the typed capability-input family carried by `CapabilityExecutionRequest`.

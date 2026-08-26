@@ -561,6 +561,322 @@ public class ExecuteWorkflowStepServiceTests
 
 
     [Fact]
+    public async Task ExecuteAsync_FailedOutcome_QuotaExhausted_ShouldReturnTypedFailureWithoutPersistence()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var trackingArtifactRepository = new TrackingArtifactRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var executor = new FailingCapabilityExecutor(
+            new CapabilityExecutionFailure(CapabilityExecutionFailureKind.QuotaExhausted));
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository: trackingArtifactRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsFailure);
+        var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
+        Assert.Equal(execution.Id, error.WorkflowExecutionId);
+        Assert.Equal(1, error.StepPosition);
+        Assert.Equal(CapabilityExecutionFailureKind.QuotaExhausted, error.Kind);
+        Assert.Null(error.RetryAfter);
+        Assert.False(trackingArtifactRepository.TryAddAsyncWasCalled,
+            "Artifact persistence must not be attempted on executor failure.");
+        Assert.Equal(1, executor.CallCount);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_FailedOutcome_TemporarilyUnavailable_ShouldReturnTypedFailureWithoutPersistence()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var trackingArtifactRepository = new TrackingArtifactRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var executor = new FailingCapabilityExecutor(
+            new CapabilityExecutionFailure(CapabilityExecutionFailureKind.TemporarilyUnavailable));
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository: trackingArtifactRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsFailure);
+        var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
+        Assert.Equal(CapabilityExecutionFailureKind.TemporarilyUnavailable, error.Kind);
+        Assert.False(trackingArtifactRepository.TryAddAsyncWasCalled);
+        Assert.Equal(1, executor.CallCount);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_FailedOutcome_RemoteOutcomeUnknown_ShouldReturnTypedFailureWithoutPersistence()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var trackingArtifactRepository = new TrackingArtifactRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var executor = new FailingCapabilityExecutor(
+            new CapabilityExecutionFailure(CapabilityExecutionFailureKind.RemoteOutcomeUnknown));
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository: trackingArtifactRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsFailure);
+        var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
+        Assert.Equal(CapabilityExecutionFailureKind.RemoteOutcomeUnknown, error.Kind);
+        Assert.False(trackingArtifactRepository.TryAddAsyncWasCalled);
+        Assert.Equal(1, executor.CallCount);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_FailedOutcome_InvalidResponse_ShouldReturnTypedFailureWithoutPersistence()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var trackingArtifactRepository = new TrackingArtifactRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var executor = new FailingCapabilityExecutor(
+            new CapabilityExecutionFailure(CapabilityExecutionFailureKind.InvalidResponse));
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository: trackingArtifactRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsFailure);
+        var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
+        Assert.Equal(CapabilityExecutionFailureKind.InvalidResponse, error.Kind);
+        Assert.False(trackingArtifactRepository.TryAddAsyncWasCalled);
+        Assert.Equal(1, executor.CallCount);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_FailedOutcome_WithRetryAfter_ShouldPreserveRetryAfter()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var trackingArtifactRepository = new TrackingArtifactRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var retryAfter = TimeSpan.FromSeconds(30);
+        var executor = new FailingCapabilityExecutor(
+            new CapabilityExecutionFailure(
+                CapabilityExecutionFailureKind.RateLimited,
+                retryAfter));
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository: trackingArtifactRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsFailure);
+        var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
+        Assert.Equal(CapabilityExecutionFailureKind.RateLimited, error.Kind);
+        Assert.Equal(retryAfter, error.RetryAfter);
+        Assert.False(trackingArtifactRepository.TryAddAsyncWasCalled);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_FailedOutcome_ShouldNotMutateWorkflowExecution()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var trackingArtifactRepository = new TrackingArtifactRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var executor = new FailingCapabilityExecutor(
+            new CapabilityExecutionFailure(CapabilityExecutionFailureKind.QuotaExhausted));
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository: trackingArtifactRepository,
+            executor: executor);
+
+        await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        var unchanged = await executionRepository.GetAsync(execution.Id);
+        Assert.NotNull(unchanged);
+        Assert.Equal(WorkflowExecutionStatus.Running, unchanged!.Status);
+        Assert.Equal(execution.Revision, unchanged.Revision);
+    }
+
+
+    [Fact]
+    public void WorkflowStepExecutionFailed_EmptyWorkflowExecutionId_ShouldThrow()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new WorkflowStepExecutionFailed(
+                new WorkflowExecutionId(Guid.Empty),
+                1,
+                new CapabilityExecutionFailure(CapabilityExecutionFailureKind.Rejected)));
+    }
+
+
+    [Fact]
+    public void WorkflowStepExecutionFailed_ZeroStepPosition_ShouldThrow()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new WorkflowStepExecutionFailed(
+                WorkflowExecutionId.New(),
+                0,
+                new CapabilityExecutionFailure(CapabilityExecutionFailureKind.Rejected)));
+    }
+
+
+    [Fact]
+    public void WorkflowStepExecutionFailed_NullFailure_ShouldThrow()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new WorkflowStepExecutionFailed(
+                WorkflowExecutionId.New(),
+                1,
+                null!));
+    }
+
+
+    [Fact]
+    public void WorkflowStepExecutionFailed_ValidConstruction_ShouldExposeFailureAndConvenienceProperties()
+    {
+        var failure = new CapabilityExecutionFailure(
+            CapabilityExecutionFailureKind.RateLimited,
+            TimeSpan.FromSeconds(30));
+
+        var error = new WorkflowStepExecutionFailed(
+            WorkflowExecutionId.New(),
+            2,
+            failure);
+
+        Assert.Same(failure, error.Failure);
+        Assert.Equal(CapabilityExecutionFailureKind.RateLimited, error.Kind);
+        Assert.Equal(TimeSpan.FromSeconds(30), error.RetryAfter);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_NullOutcome_ShouldThrowInvalidOperationException()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            SharedAssetId,
+            definitionId,
+            1);
+
+        var nullExecutor = new NullReturningCapabilityExecutor();
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            executor: nullExecutor);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ExecuteAsync(execution.Id, 1, SharedInput));
+    }
+
+
+    [Fact]
     public async Task ExecuteAsync_NullInput_ShouldThrowBeforeRepositoryLookup()
     {
         var trackingExecutionRepository = new TrackingWorkflowExecutionRepository();
@@ -1184,7 +1500,7 @@ public class ExecuteWorkflowStepServiceTests
         }
 
 
-        public Task<CapabilityExecutionOutput> ExecuteAsync(
+        public Task<CapabilityExecutionOutcome> ExecuteAsync(
             CapabilityExecutionRequest request,
             CancellationToken cancellationToken = default)
         {
@@ -1194,7 +1510,8 @@ public class ExecuteWorkflowStepServiceTests
             ExecuteAsyncWasCalled = true;
             CallCount++;
 
-            return Task.FromResult(_output);
+            return Task.FromResult<CapabilityExecutionOutcome>(
+                new CapabilityExecutionSucceeded(_output));
         }
     }
 
@@ -1208,7 +1525,7 @@ public class ExecuteWorkflowStepServiceTests
             _exception = exception;
         }
 
-        public Task<CapabilityExecutionOutput> ExecuteAsync(
+        public Task<CapabilityExecutionOutcome> ExecuteAsync(
             CapabilityExecutionRequest request,
             CancellationToken cancellationToken = default)
         {
@@ -1228,7 +1545,7 @@ public class ExecuteWorkflowStepServiceTests
             _cts = cts;
         }
 
-        public Task<CapabilityExecutionOutput> ExecuteAsync(
+        public Task<CapabilityExecutionOutcome> ExecuteAsync(
             CapabilityExecutionRequest request,
             CancellationToken cancellationToken = default)
         {
@@ -1236,11 +1553,53 @@ public class ExecuteWorkflowStepServiceTests
             _cts.Cancel();
             cancellationToken.ThrowIfCancellationRequested();
 
-            return Task.FromResult(new CapabilityExecutionOutput(
-                "cancelled.png",
-                ArtifactType.ConceptImage,
-                Array.Empty<ArtifactId>(),
-                SharedContent));
+            return Task.FromResult<CapabilityExecutionOutcome>(
+                new CapabilityExecutionSucceeded(new CapabilityExecutionOutput(
+                    "cancelled.png",
+                    ArtifactType.ConceptImage,
+                    Array.Empty<ArtifactId>(),
+                    SharedContent)));
+        }
+    }
+
+
+    private sealed class NullReturningCapabilityExecutor : ICapabilityExecutor
+    {
+        public Task<CapabilityExecutionOutcome> ExecuteAsync(
+            CapabilityExecutionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<CapabilityExecutionOutcome>(null!);
+        }
+    }
+
+
+    private sealed class FailingCapabilityExecutor : ICapabilityExecutor
+    {
+        private readonly CapabilityExecutionFailure _failure;
+
+        public CapabilityExecutionRequest? CapturedRequest { get; private set; }
+
+        public int CallCount { get; private set; }
+
+
+        public FailingCapabilityExecutor(CapabilityExecutionFailure failure)
+        {
+            _failure = failure;
+        }
+
+
+        public Task<CapabilityExecutionOutcome> ExecuteAsync(
+            CapabilityExecutionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            CapturedRequest = request;
+            CallCount++;
+
+            return Task.FromResult<CapabilityExecutionOutcome>(
+                new CapabilityExecutionFailed(_failure));
         }
     }
 

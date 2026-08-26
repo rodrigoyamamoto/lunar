@@ -97,35 +97,54 @@ public sealed class ExecuteWorkflowStepService
             step.Position,
             input);
 
-        var output = await _capabilityExecutor.ExecuteAsync(
+        var outcome = await _capabilityExecutor.ExecuteAsync(
             request,
             cancellationToken);
 
-        if (output is null)
+        if (outcome is null)
         {
             throw new InvalidOperationException(
-                "Capability executor returned null output, violating its contract.");
+                "Capability executor returned null in violation of ICapabilityExecutor's contract.");
         }
 
-        var artifact = new Artifact(
-            ArtifactId.New(),
-            execution.AssetId,
-            output.ArtifactName,
-            output.ArtifactType,
-            output.SourceArtifactIds,
-            execution.Id);
-
-        var persisted = await _artifactRepository.TryAddAsync(
-            artifact,
-            cancellationToken);
-
-        if (!persisted)
+        switch (outcome)
         {
-            return Result<ProducedArtifact>.Failure(
-                new ArtifactPersistenceFailed(artifact.Id));
-        }
+            case CapabilityExecutionSucceeded succeeded:
+                {
+                    var output = succeeded.Output;
 
-        return Result<ProducedArtifact>.Success(
-            new ProducedArtifact(artifact, output.Content));
+                    var artifact = new Artifact(
+                        ArtifactId.New(),
+                        execution.AssetId,
+                        output.ArtifactName,
+                        output.ArtifactType,
+                        output.SourceArtifactIds,
+                        execution.Id);
+
+                    var persisted = await _artifactRepository.TryAddAsync(
+                        artifact,
+                        cancellationToken);
+
+                    if (!persisted)
+                    {
+                        return Result<ProducedArtifact>.Failure(
+                            new ArtifactPersistenceFailed(artifact.Id));
+                    }
+
+                    return Result<ProducedArtifact>.Success(
+                        new ProducedArtifact(artifact, output.Content));
+                }
+
+            case CapabilityExecutionFailed failed:
+                return Result<ProducedArtifact>.Failure(
+                    new WorkflowStepExecutionFailed(
+                        workflowExecutionId,
+                        stepPosition,
+                        failed.Failure));
+
+            default:
+                throw new InvalidOperationException(
+                    "Capability executor returned an unsupported outcome.");
+        }
     }
 }
