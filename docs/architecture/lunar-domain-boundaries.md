@@ -161,12 +161,32 @@ The implementation behind a capability can change.
 `ICapabilityExecutor` is the provider-independent Core execution port
 that bridges a `WorkflowStep.CapabilityId` to an actual invocation. It
 receives a `CapabilityExecutionRequest` (authoritative Lunar execution
-context) and returns a `CapabilityExecutionOutput` (one logical Artifact
-output description). The executor does not own `ArtifactId`, `AssetId`,
-`SourceExecutionId`, or `CreatedAt` — Lunar assigns those when
-constructing the `Artifact`. No production executor implementation
-exists yet; the first real Infrastructure adapter will be supplied by a
-future provider slice.
+context and a typed `CapabilityExecutionInput`) and returns a
+`CapabilityExecutionOutput` (one logical Artifact output description).
+The executor does not own `ArtifactId`, `AssetId`, `SourceExecutionId`,
+or `CreatedAt` — Lunar assigns those when constructing the `Artifact`.
+No production executor implementation exists yet; the first real
+Infrastructure adapter will be supplied by a future provider slice.
+
+`CapabilityExecutionInput` is a minimal abstract record that serves as
+the typed capability-input family carried by `CapabilityExecutionRequest`.
+It exists so the already-generic `ICapabilityExecutor` can carry
+different concrete input shapes over time without introducing a generic
+parameter bag, dictionary, JSON payload, or universal `Prompt` field.
+
+`TextPromptInput` is the first concrete `CapabilityExecutionInput`. It
+represents textual creative intent and owns the semantic validity of a
+text prompt: `Prompt` cannot be null, empty, or whitespace-only, and a
+valid prompt is preserved exactly without trimming or normalization.
+`TextPromptInput` is one concrete capability input, not a universal
+field required by every future capability. Future capability input types
+may be introduced only when concrete product requirements justify them.
+
+Capability input is currently passed to the executor in-memory for the
+invocation and is not yet persisted as historical per-step invocation
+state. Lunar does not yet have a historical input snapshot for each
+invocation; full invocation reconstruction and input audit trails remain
+a future requirement.
 
 ------------------------------------------------------------------------
 

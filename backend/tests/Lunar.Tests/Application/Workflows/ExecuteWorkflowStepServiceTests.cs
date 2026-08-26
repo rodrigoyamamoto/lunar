@@ -13,6 +13,9 @@ public class ExecuteWorkflowStepServiceTests
 {
     private static AssetId SharedAssetId { get; } = AssetId.New();
 
+    private static readonly CapabilityExecutionInput SharedInput =
+        new TextPromptInput("Generate a dark fantasy raven shrine.");
+
 
     private static WorkflowDefinition CreateDefinition(
         WorkflowDefinitionId definitionId,
@@ -133,7 +136,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository,
             executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
@@ -173,7 +176,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             executor: executor);
 
-        await service.ExecuteAsync(execution.Id, 1);
+        await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.NotNull(executor.CapturedRequest);
         Assert.Equal(v1Capability, executor.CapturedRequest!.CapabilityId);
@@ -206,7 +209,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             executor: executor);
 
-        await service.ExecuteAsync(execution.Id, 1);
+        await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.NotNull(executor.CapturedRequest);
         Assert.Equal(capabilityId, executor.CapturedRequest!.CapabilityId);
@@ -238,7 +241,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             executor: executor);
 
-        await service.ExecuteAsync(execution.Id, 1);
+        await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.NotNull(executor.CapturedRequest);
         var request = executor.CapturedRequest!;
@@ -274,7 +277,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsSuccess);
         var artifact = result.Value!;
@@ -315,7 +318,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsSuccess);
         var artifact = result.Value!;
@@ -357,7 +360,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository,
             executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsSuccess);
         var retrieved = await artifactRepository.GetAsync(result.Value!.Id);
@@ -370,6 +373,89 @@ public class ExecuteWorkflowStepServiceTests
 
 
     [Fact]
+    public async Task ExecuteAsync_Success_ShouldSendExactInputInstanceToExecutor()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var executor = new StubCapabilityExecutor();
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            executor: executor);
+
+        var input = new TextPromptInput("Generate a dark fantasy raven shrine.");
+        await service.ExecuteAsync(execution.Id, 1, input);
+
+        Assert.NotNull(executor.CapturedRequest);
+        Assert.Same(input, executor.CapturedRequest!.Input);
+        var textPrompt = Assert.IsType<TextPromptInput>(executor.CapturedRequest.Input);
+        Assert.Equal("Generate a dark fantasy raven shrine.", textPrompt.Prompt);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_Success_ShouldPreserveExactPromptWithSpacingAndPunctuation()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var executor = new StubCapabilityExecutor();
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            executor: executor);
+
+        var prompt = "  ancient raven shrine, moonlit -- cracked stone  ";
+        var input = new TextPromptInput(prompt);
+        await service.ExecuteAsync(execution.Id, 1, input);
+
+        Assert.NotNull(executor.CapturedRequest);
+        var textPrompt = Assert.IsType<TextPromptInput>(executor.CapturedRequest!.Input);
+        Assert.Equal(prompt, textPrompt.Prompt);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_NullInput_ShouldThrowBeforeRepositoryLookup()
+    {
+        var trackingExecutionRepository = new TrackingWorkflowExecutionRepository();
+        var service = CreateService(executionRepository: trackingExecutionRepository);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
+            service.ExecuteAsync(WorkflowExecutionId.New(), 1, null!));
+
+        Assert.False(
+            trackingExecutionRepository.GetAsyncWasCalled,
+            "GetAsync must not be called when input is null.");
+    }
+
+
+    [Fact]
     public async Task ExecuteAsync_MissingExecution_ShouldReturnNotFoundWithExactId()
     {
         var trackingExecutor = new StubCapabilityExecutor();
@@ -378,7 +464,7 @@ public class ExecuteWorkflowStepServiceTests
 
         var executionId = WorkflowExecutionId.New();
 
-        var result = await service.ExecuteAsync(executionId, 1);
+        var result = await service.ExecuteAsync(executionId, 1, SharedInput);
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowExecutionNotFound>(result.Error);
@@ -406,7 +492,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: trackingExecutor,
             artifactRepository: trackingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 1);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowExecutionNotRunning>(result.Error);
@@ -437,7 +523,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: trackingExecutor,
             artifactRepository: trackingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 1);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowExecutionNotRunning>(result.Error);
@@ -466,7 +552,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: trackingExecutor,
             artifactRepository: trackingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 1);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowDefinitionNotFound>(result.Error);
@@ -503,7 +589,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: trackingExecutor,
             artifactRepository: trackingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 1);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowDefinitionNotFound>(result.Error);
@@ -540,7 +626,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: trackingExecutor,
             artifactRepository: trackingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 3);
+        var result = await service.ExecuteAsync(execution.Id, 3, SharedInput);
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowStepNotFound>(result.Error);
@@ -563,7 +649,7 @@ public class ExecuteWorkflowStepServiceTests
         var service = CreateService(executionRepository: trackingExecutionRepository);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.ExecuteAsync(WorkflowExecutionId.New(), stepPosition));
+            service.ExecuteAsync(WorkflowExecutionId.New(), stepPosition, SharedInput));
 
         Assert.False(
             trackingExecutionRepository.GetAsyncWasCalled,
@@ -600,7 +686,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: throwingExecutor);
 
         var actual = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ExecuteAsync(execution.Id, 1));
+            service.ExecuteAsync(execution.Id, 1, SharedInput));
 
         Assert.Same(expectedException, actual);
         Assert.False(
@@ -639,7 +725,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: executor);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.ExecuteAsync(execution.Id, 1));
+            service.ExecuteAsync(execution.Id, 1, SharedInput));
 
         Assert.True(
             executor.ExecuteAsyncWasCalled,
@@ -680,7 +766,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: executor);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.ExecuteAsync(execution.Id, 1));
+            service.ExecuteAsync(execution.Id, 1, SharedInput));
 
         Assert.True(
             executor.ExecuteAsyncWasCalled,
@@ -721,7 +807,7 @@ public class ExecuteWorkflowStepServiceTests
         cts.Cancel();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            service.ExecuteAsync(execution.Id, 1, cts.Token));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, cts.Token));
 
         Assert.False(trackingExecutor.ExecuteAsyncWasCalled, "Executor must not be called when token is pre-cancelled.");
         Assert.False(trackingArtifactRepository.TryAddAsyncWasCalled, "Persistence must not be called when token is pre-cancelled.");
@@ -757,7 +843,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: cancellingExecutor);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            service.ExecuteAsync(execution.Id, 1, cts.Token));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, cts.Token));
 
         Assert.True(
             cancellingExecutor.ExecuteAsyncWasCalled,
@@ -795,7 +881,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository: cancellingArtifactRepository);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            service.ExecuteAsync(execution.Id, 1, cts.Token));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, cts.Token));
 
         Assert.True(
             cancellingArtifactRepository.TryAddAsyncWasCalled,
@@ -827,7 +913,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             artifactRepository: rejectingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 1);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(result.IsFailure);
         Assert.IsType<ArtifactPersistenceFailed>(result.Error);
@@ -859,7 +945,7 @@ public class ExecuteWorkflowStepServiceTests
 
         var service = CreateService(executionRepository, definitionRepository);
 
-        await service.ExecuteAsync(execution.Id, 1);
+        await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         var reloaded = await executionRepository.GetAsync(execution.Id);
         Assert.NotNull(reloaded);
@@ -894,8 +980,8 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             artifactRepository);
 
-        var first = await service.ExecuteAsync(execution.Id, 1);
-        var second = await service.ExecuteAsync(execution.Id, 1);
+        var first = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var second = await service.ExecuteAsync(execution.Id, 1, SharedInput);
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);

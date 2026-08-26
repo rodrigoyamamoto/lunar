@@ -33,6 +33,7 @@ public sealed class ExecuteWorkflowStepService
     public async Task<Result<Artifact>> ExecuteAsync(
         WorkflowExecutionId workflowExecutionId,
         int stepPosition,
+        CapabilityExecutionInput input,
         CancellationToken cancellationToken = default)
     {
         if (stepPosition < 1)
@@ -41,6 +42,8 @@ public sealed class ExecuteWorkflowStepService
                 "Step position must be a positive integer.",
                 nameof(stepPosition));
         }
+
+        ArgumentNullException.ThrowIfNull(input);
 
         var execution = await _workflowExecutionRepository.GetAsync(
             workflowExecutionId,
@@ -90,7 +93,8 @@ public sealed class ExecuteWorkflowStepService
             execution.Id,
             execution.WorkflowDefinitionId,
             execution.WorkflowDefinitionVersion,
-            step.Position);
+            step.Position,
+            input);
 
         var output = await _capabilityExecutor.ExecuteAsync(
             request,

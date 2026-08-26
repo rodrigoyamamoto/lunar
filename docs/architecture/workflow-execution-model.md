@@ -385,6 +385,8 @@ service:
 
 -   rejects `stepPosition < 1` with `ArgumentException` before any
     repository lookup;
+-   rejects `null` input with `ArgumentNullException` before any
+    repository lookup;
 -   loads the `WorkflowExecution` (returns `WorkflowExecutionNotFound`
     if missing);
 -   requires `Running` status (returns `WorkflowExecutionNotRunning`
@@ -395,7 +397,8 @@ service:
 -   resolves the `WorkflowStep` by semantic `Position` (returns
     `WorkflowStepNotFound` if no such step exists);
 -   builds a `CapabilityExecutionRequest` from authoritative loaded
-    state;
+    state and the caller-supplied `CapabilityExecutionInput` (passed
+    through unchanged);
 -   invokes `ICapabilityExecutor.ExecuteAsync` (unexpected exceptions
     propagate; cancellation propagates as `OperationCanceledException`);
 -   creates an `Artifact` with Lunar-owned `ArtifactId`, `AssetId`, and
@@ -409,6 +412,14 @@ persistent per-step runtime state, advance a current-step pointer, or
 automatically progress to the next step. Repeated calls for the same
 `(WorkflowExecutionId, StepPosition)` may invoke the capability again
 and produce another Artifact — there is no idempotency semantic yet.
+
+The caller supplies a typed `CapabilityExecutionInput`. The service
+passes it through to the `CapabilityExecutionRequest` unchanged — it
+does not transform, clone, validate, or interpret the input beyond the
+null check. The first concrete input is `TextPromptInput` (textual
+creative intent). Capability input is not persisted as historical
+per-step invocation state in this slice; Lunar does not yet have a
+historical input snapshot for each invocation.
 
 ## Future Evolution
 

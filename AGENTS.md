@@ -9,8 +9,8 @@ current task, then expand the survey if this guide is stale or incomplete.
 ## Survey Metadata
 
 - Last surveyed: 2026-08-25
-- Survey baseline: `5535d5c` (`docs: formalize error and exception naming conventions`)
-- Baseline validation: restore/build/test passed, 290 tests, 0 warnings
+- Survey baseline: `bf8ae39` (`feat: add workflow capability execution boundary`)
+- Baseline validation: restore/build/test passed, 338 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -54,6 +54,8 @@ Implemented:
 - `ICapabilityExecutor` provider-independent Core execution port;
 - `CapabilityExecutionRequest` Core execution context;
 - `CapabilityExecutionOutput` Core logical Artifact output description;
+- `CapabilityExecutionInput` Core abstract typed capability input base;
+- `TextPromptInput` Core concrete textual creative-intent capability input;
 - `WorkflowStepNotFound` Application error;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
@@ -284,14 +286,40 @@ not carry provider, model, endpoint, or configuration information.
 `ICapabilityExecutor` is a provider-independent Core execution port. It
 receives a `CapabilityExecutionRequest` (authoritative Lunar execution
 context: `CapabilityId`, `AssetId`, `WorkflowExecutionId`,
-`WorkflowDefinitionId`, `WorkflowDefinitionVersion`, `StepPosition`) and
-returns one `CapabilityExecutionOutput` (logical Artifact output
-description: `ArtifactName`, `ArtifactType`, `SourceArtifactIds`).
+`WorkflowDefinitionId`, `WorkflowDefinitionVersion`, `StepPosition`,
+`Input`) and returns one `CapabilityExecutionOutput` (logical Artifact
+output description: `ArtifactName`, `ArtifactType`, `SourceArtifactIds`).
+
+`CapabilityExecutionInput` is a minimal abstract record that serves as
+the typed capability-input family carried by `CapabilityExecutionRequest`.
+It exists so the already-generic `ICapabilityExecutor` can carry
+different concrete input shapes over time without introducing a generic
+parameter bag, dictionary, JSON payload, or universal `Prompt` field.
+It carries no behavior, no `Type`/`Kind`/discriminator, no
+serialization, and no validation.
+
+`TextPromptInput` is the first and currently only concrete
+`CapabilityExecutionInput`. It represents a capability input whose
+semantic content is textual creative intent. It owns the semantic
+validity of a text prompt: `Prompt` cannot be null, empty, or
+whitespace-only. A valid prompt is preserved exactly — it is not
+trimmed, normalized, re-cased, or rewritten. `TextPromptInput` is one
+concrete capability input, not a universal field required by every
+future capability. Future capability input types may be introduced only
+when concrete product requirements justify them. No negative prompt,
+dimensions, seed, style, model, or other image-generation parameters are
+present; those belong to future concrete capability/provider slices.
 
 The executor does not create `ArtifactId`, `AssetId`,
 `SourceExecutionId`, or `CreatedAt` — Lunar owns those semantics. The
 Application layer constructs the `Artifact` with Lunar-owned identity and
 provenance from the executor's output description.
+
+Capability input is currently passed to the executor in-memory for the
+invocation and is not yet persisted as historical per-step invocation
+state. Lunar does not yet have a historical input snapshot for each
+invocation; full invocation reconstruction and input audit trails remain
+a future requirement.
 
 The port is technology-neutral: it does not reference HTTP, JSON,
 provider SDKs, URLs, file paths, streams, cloud object keys, model
@@ -301,9 +329,10 @@ Blender process, or other production tool. No production executor
 implementation exists yet; deterministic test doubles are used in tests.
 
 The current invocation boundary returns exactly one logical output.
-Multi-output execution, capability-specific input schemas, prompt
-fields, physical output storage, provider selection, retry, and timeout
-are intentionally deferred to future concrete provider/capability slices.
+Multi-output execution, capability-specific input schemas beyond
+`TextPromptInput`, physical output storage, provider selection, retry,
+and timeout are intentionally deferred to future concrete
+provider/capability slices.
 
 ### Workflow Definition
 
@@ -472,6 +501,8 @@ a Lunar-owned `Artifact`:
 
 - rejecting `stepPosition < 1` with `ArgumentException` before any
   repository lookup;
+- rejecting `null` input with `ArgumentNullException` before any
+  repository lookup;
 - loading the execution through `IWorkflowExecutionRepository.GetAsync`
   (returns `WorkflowExecutionNotFound` if missing);
 - checking that the execution status is `Running` (returns
@@ -485,7 +516,8 @@ a Lunar-owned `Artifact`:
 - building a `CapabilityExecutionRequest` from authoritative loaded
   state (`WorkflowStep.CapabilityId`, `execution.AssetId`,
   `execution.Id`, `execution.WorkflowDefinitionId`,
-  `execution.WorkflowDefinitionVersion`, `step.Position`);
+  `execution.WorkflowDefinitionVersion`, `step.Position`) and the
+  caller-supplied `CapabilityExecutionInput` (passed through unchanged);
 - invoking `ICapabilityExecutor.ExecuteAsync` with the same
   `CancellationToken` (unexpected executor exceptions propagate
   unchanged; cancellation propagates as `OperationCanceledException`);
@@ -524,7 +556,7 @@ Exception policy:
 
 - Invalid caller/programmer usage (null dependencies, null Artifact,
   invalid domain construction, negative expected revision, step position
-  less than one) remains exception-based.
+  less than one, null capability execution input) remains exception-based.
 - Expected use-case outcomes (asset not found, definition not found,
   persistence rejected, execution not found, concurrency conflict,
   cannot start, execution not running, workflow step not found, artifact

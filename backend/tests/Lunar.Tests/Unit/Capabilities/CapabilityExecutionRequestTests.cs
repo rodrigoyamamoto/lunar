@@ -10,6 +10,7 @@ public class CapabilityExecutionRequestTests
     private static readonly AssetId ValidAssetId = AssetId.New();
     private static readonly WorkflowExecutionId ValidExecutionId = WorkflowExecutionId.New();
     private static readonly WorkflowDefinitionId ValidDefinitionId = WorkflowDefinitionId.New();
+    private static readonly CapabilityExecutionInput ValidInput = new TextPromptInput("Generate a dark fantasy raven shrine.");
 
 
     [Fact]
@@ -21,7 +22,8 @@ public class CapabilityExecutionRequestTests
             ValidExecutionId,
             ValidDefinitionId,
             3,
-            2);
+            2,
+            ValidInput);
 
         Assert.Equal(ValidCapabilityId, request.CapabilityId);
         Assert.Equal(ValidAssetId, request.AssetId);
@@ -29,6 +31,7 @@ public class CapabilityExecutionRequestTests
         Assert.Equal(ValidDefinitionId, request.WorkflowDefinitionId);
         Assert.Equal(3, request.WorkflowDefinitionVersion);
         Assert.Equal(2, request.StepPosition);
+        Assert.Same(ValidInput, request.Input);
     }
 
 
@@ -42,7 +45,8 @@ public class CapabilityExecutionRequestTests
                 ValidExecutionId,
                 ValidDefinitionId,
                 1,
-                1));
+                1,
+                ValidInput));
     }
 
 
@@ -56,7 +60,8 @@ public class CapabilityExecutionRequestTests
                 ValidExecutionId,
                 ValidDefinitionId,
                 1,
-                1));
+                1,
+                ValidInput));
     }
 
 
@@ -70,7 +75,8 @@ public class CapabilityExecutionRequestTests
                 new WorkflowExecutionId(Guid.Empty),
                 ValidDefinitionId,
                 1,
-                1));
+                1,
+                ValidInput));
     }
 
 
@@ -84,7 +90,8 @@ public class CapabilityExecutionRequestTests
                 ValidExecutionId,
                 new WorkflowDefinitionId(Guid.Empty),
                 1,
-                1));
+                1,
+                ValidInput));
     }
 
 
@@ -100,7 +107,8 @@ public class CapabilityExecutionRequestTests
                 ValidExecutionId,
                 ValidDefinitionId,
                 version,
-                1));
+                1,
+                ValidInput));
     }
 
 
@@ -116,6 +124,22 @@ public class CapabilityExecutionRequestTests
                 ValidExecutionId,
                 ValidDefinitionId,
                 1,
-                stepPosition));
+                stepPosition,
+                ValidInput));
+    }
+
+
+    [Fact]
+    public void Constructor_NullInput_ShouldThrow()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new CapabilityExecutionRequest(
+                ValidCapabilityId,
+                ValidAssetId,
+                ValidExecutionId,
+                ValidDefinitionId,
+                1,
+                1,
+                null!));
     }
 }

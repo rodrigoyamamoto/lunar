@@ -11,6 +11,7 @@ public sealed record CapabilityExecutionRequest
     public WorkflowDefinitionId WorkflowDefinitionId { get; }
     public int WorkflowDefinitionVersion { get; }
     public int StepPosition { get; }
+    public CapabilityExecutionInput Input { get; }
 
 
     public CapabilityExecutionRequest(
@@ -19,7 +20,8 @@ public sealed record CapabilityExecutionRequest
         WorkflowExecutionId workflowExecutionId,
         WorkflowDefinitionId workflowDefinitionId,
         int workflowDefinitionVersion,
-        int stepPosition)
+        int stepPosition,
+        CapabilityExecutionInput input)
     {
         if (capabilityId.Value == Guid.Empty)
         {
@@ -63,11 +65,14 @@ public sealed record CapabilityExecutionRequest
                 nameof(stepPosition));
         }
 
+        ArgumentNullException.ThrowIfNull(input);
+
         CapabilityId = capabilityId;
         AssetId = assetId;
         WorkflowExecutionId = workflowExecutionId;
         WorkflowDefinitionId = workflowDefinitionId;
         WorkflowDefinitionVersion = workflowDefinitionVersion;
         StepPosition = stepPosition;
+        Input = input;
     }
 }
