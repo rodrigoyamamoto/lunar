@@ -447,8 +447,23 @@ Current Lunar development policy: **£0 external inference spend**.
 
 ## Current Limitations
 
-- Generated image content is in-memory only — not durably persisted.
-- No content store, blob storage, or filesystem storage.
+- The Cloudflare adapter does not own durable storage. It receives
+  JSON/Base64 from the Cloudflare REST API, decodes it to
+  `BinaryArtifactContent` in memory, and returns it to
+  `ExecuteWorkflowStepService`. Durable content persistence is owned by
+  Lunar through the provider-neutral `IArtifactContentStore` Core port;
+  the first implementation is `LocalFileArtifactContentStore` (local
+  filesystem). See `docs/architecture/artifact-content-storage.md`.
+- Base64 remains a Cloudflare transport encoding only. Lunar stores
+  decoded raw bytes, not Base64.
+- The Cloudflare provider URL and model response are not durable
+  ownership. Lunar ownership is established through `ArtifactId`.
+- No download API yet. Retrieval is through `IArtifactContentStore`
+  only; no HTTP endpoint exists.
+- Cloud content stores (Cloudflare R2, Amazon S3, Azure Blob Storage)
+  remain future work. The same `IArtifactContentStore` contract can be
+  implemented by those providers without changing the Cloudflare
+  adapter, `Artifact`, or `ExecuteWorkflowStepService`.
 - No streaming, chunking, or multi-file bundles.
 - No content hash or deduplication.
 - No provider/model selection or routing.

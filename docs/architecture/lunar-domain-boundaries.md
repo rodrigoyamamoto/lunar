@@ -211,10 +211,14 @@ Capability input is currently passed to the executor in-memory for the
 invocation and is not yet persisted as historical per-step invocation
 state. Lunar does not yet have a historical input snapshot for each
 invocation; full invocation reconstruction and input audit trails remain
-a future requirement. Physical content is similarly in-memory only and
-not yet durably persisted; one logical Artifact currently carries one
-`ArtifactContent`. Multi-file bundles, streaming, chunking, and large-
-output modeling are deferred to future slices.
+a future requirement. Physical content is durably persisted through the
+provider-neutral `IArtifactContentStore` Core port; the first
+implementation is `LocalFileArtifactContentStore` in Infrastructure. One
+logical Artifact currently carries one `ArtifactContent`. Multi-file
+bundles, streaming, chunking, and large-output modeling are deferred to
+future slices. See `docs/architecture/artifact-content-storage.md` for
+the storage boundary, durable representation, atomic publication, and
+compensation semantics.
 
 ------------------------------------------------------------------------
 

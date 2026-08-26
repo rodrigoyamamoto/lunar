@@ -12,22 +12,26 @@ public sealed class ExecuteWorkflowStepService
     private readonly IWorkflowDefinitionRepository _workflowDefinitionRepository;
     private readonly IArtifactRepository _artifactRepository;
     private readonly ICapabilityExecutor _capabilityExecutor;
+    private readonly IArtifactContentStore _artifactContentStore;
 
     public ExecuteWorkflowStepService(
         IWorkflowExecutionRepository workflowExecutionRepository,
         IWorkflowDefinitionRepository workflowDefinitionRepository,
         IArtifactRepository artifactRepository,
-        ICapabilityExecutor capabilityExecutor)
+        ICapabilityExecutor capabilityExecutor,
+        IArtifactContentStore artifactContentStore)
     {
         ArgumentNullException.ThrowIfNull(workflowExecutionRepository);
         ArgumentNullException.ThrowIfNull(workflowDefinitionRepository);
         ArgumentNullException.ThrowIfNull(artifactRepository);
         ArgumentNullException.ThrowIfNull(capabilityExecutor);
+        ArgumentNullException.ThrowIfNull(artifactContentStore);
 
         _workflowExecutionRepository = workflowExecutionRepository;
         _workflowDefinitionRepository = workflowDefinitionRepository;
         _artifactRepository = artifactRepository;
         _capabilityExecutor = capabilityExecutor;
+        _artifactContentStore = artifactContentStore;
     }
 
 
@@ -121,18 +125,45 @@ public sealed class ExecuteWorkflowStepService
                         output.SourceArtifactIds,
                         execution.Id);
 
-                    var persisted = await _artifactRepository.TryAddAsync(
-                        artifact,
+                    var contentAdded = await _artifactContentStore.TryAddAsync(
+                        artifact.Id,
+                        output.Content,
                         cancellationToken);
 
-                    if (!persisted)
+                    if (!contentAdded)
                     {
                         return Result<ProducedArtifact>.Failure(
-                            new ArtifactPersistenceFailed(artifact.Id));
+                            new ArtifactContentPersistenceFailed(artifact.Id));
                     }
 
-                    return Result<ProducedArtifact>.Success(
-                        new ProducedArtifact(artifact, output.Content));
+                    var metadataPersisted = false;
+
+                    try
+                    {
+                        var persisted = await _artifactRepository.TryAddAsync(
+                            artifact,
+                            cancellationToken);
+
+                        metadataPersisted = persisted;
+
+                        if (!metadataPersisted)
+                        {
+                            return Result<ProducedArtifact>.Failure(
+                                new ArtifactPersistenceFailed(artifact.Id));
+                        }
+
+                        return Result<ProducedArtifact>.Success(
+                            new ProducedArtifact(artifact, output.Content));
+                    }
+                    finally
+                    {
+                        if (!metadataPersisted)
+                        {
+                            await _artifactContentStore.TryDeleteAsync(
+                                artifact.Id,
+                                CancellationToken.None);
+                        }
+                    }
                 }
 
             case CapabilityExecutionFailed failed:

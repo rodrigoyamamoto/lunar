@@ -409,8 +409,13 @@ the in-memory physical content. The service:
 -   on `CapabilityExecutionSucceeded`, creates an `Artifact` with Lunar-owned
     `ArtifactId`, `AssetId`, and `SourceExecutionId` — the executor cannot
     supply or override these;
+-   persists physical content through `IArtifactContentStore.TryAddAsync`
+    using the new `ArtifactId` (returns `ArtifactContentPersistenceFailed`
+    if rejected — content is persisted before metadata);
 -   persists the Artifact through `IArtifactRepository.TryAddAsync`
-    (returns `ArtifactPersistenceFailed` if rejected);
+    (returns `ArtifactPersistenceFailed` if rejected, and attempts
+    compensation by deleting the stored content with a non-cancelled
+    token);
 -   returns a `ProducedArtifact` pairing the persisted `Artifact` with
     the executor's `CapabilityExecutionOutput.Content` (passed through
     unchanged) on success.
@@ -430,15 +435,19 @@ per-step invocation state in this slice; Lunar does not yet have a
 historical input snapshot for each invocation.
 
 The executor returns a `CapabilityExecutionOutput` carrying physical
-`ArtifactContent`. The service passes the content through to the
-`ProducedArtifact` unchanged — it does not transform, clone, or
-re-encode it. The first concrete content type is `BinaryArtifactContent`
-(in-memory bytes plus `MediaType`). Physical content is in-memory only;
-it is not durably persisted, may be lost if the process exits, and may
-be lost if metadata persistence fails after the executor produced
-content. Durable content storage, streaming, chunking, multi-file
-bundles, and content hashing/deduplication are deferred to future
-slices. One logical Artifact currently carries one `ArtifactContent`.
+`ArtifactContent`. The service persists the content through
+`IArtifactContentStore` before persisting Artifact metadata, and passes
+the content through to the `ProducedArtifact` unchanged — it does not
+transform, clone, or re-encode it. The first concrete content type is
+`BinaryArtifactContent` (in-memory bytes plus `MediaType`). Physical
+content is durably persisted through `IArtifactContentStore`; if
+metadata persistence fails or throws after content has been published,
+the service attempts compensation by deleting the stored content. A
+residual process-crash orphan window remains — see
+`docs/architecture/artifact-content-storage.md`. Streaming, chunking,
+multi-file bundles, and content hashing/deduplication are deferred to
+future slices. One logical Artifact currently carries one
+`ArtifactContent`.
 
 ## Future Evolution
 

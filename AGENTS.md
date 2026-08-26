@@ -9,9 +9,9 @@ current task, then expand the survey if this guide is stale or incomplete.
 ## Survey Metadata
 
 - Last surveyed: 2026-08-26
-- Survey baseline: `2f160f9` (`feat: add binary artifact content output`)
-- Baseline validation: restore/build/test passed, 367 tests, 0 warnings
-- Current remediated working-tree validation: 488 tests, 0 warnings
+- Survey baseline: `52b1749` (`feat: add Cloudflare image generation adapter`)
+- Baseline validation: restore/build/test passed, 488 tests, 0 warnings
+- Current durable-content-storage working-tree validation: 541 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -59,6 +59,9 @@ Implemented:
 - `TextPromptInput` Core concrete textual creative-intent capability input;
 - `ArtifactContent` Core abstract physical content family;
 - `BinaryArtifactContent` Core concrete binary physical content;
+- `IArtifactContentStore` Core provider-neutral content persistence port;
+- `LocalFileArtifactContentStore` Infrastructure local filesystem content adapter;
+- `ArtifactContentPersistenceFailed` Application error for content persistence rejection;
 - `ProducedArtifact` Application use-case result pairing Artifact metadata with in-memory content;
 - `CapabilityExecutionOutcome` Core abstract execution outcome (success/failure);
 - `CapabilityExecutionSucceeded` Core concrete successful outcome;
@@ -78,7 +81,7 @@ Implemented:
 Still scaffolding or intentionally absent:
 
 - API endpoints beyond the template root endpoint;
-- durable persistence, database mappings, and ORM;
+- durable metadata persistence, database mappings, and ORM (content storage is now durable via `LocalFileArtifactContentStore`);
 - additional provider adapters beyond Cloudflare Workers AI;
 - worker contracts and worker implementations;
 - workflow scheduling, retries, and orchestration engine;
@@ -114,6 +117,8 @@ backend/
       Workers/             Placeholder
     Lunar.Infrastructure/  Technical implementations
       Persistence/         In-memory asset, artifact, and workflow repositories
+      FileSystem/          Local filesystem artifact content store
+      Providers/           Cloudflare Workers AI adapter
     Lunar.Application/     Application-layer orchestration
       Workflows/           ExecuteWorkflowService, StartWorkflowExecutionService
       Artifacts/           RecordWorkflowArtifactService
@@ -188,6 +193,7 @@ Read these before changing the related area:
 - `docs/architecture/workflow-execution-model.md` — execution lifecycle
 - `docs/architecture/workflow-definition-model.md` — workflow definition and capability model
 - `docs/architecture/application-error-handling.md` — Application Result pattern and error classification
+- `docs/architecture/artifact-content-storage.md` — durable content storage boundary and local filesystem adapter
 
 Accepted ADRs describe binding decisions. Architecture documents describe the
 current model. Code and tests implement that model. If they disagree, do not
@@ -285,7 +291,9 @@ retrieves by ID or returns `null`. Invalid identity arguments are rejected
 with `ArgumentException`. Infrastructure provides
 `InMemoryArtifactRepository` as a development/test adapter. The repository
 persists Artifact domain objects only — it does not store physical files,
-blobs, or binary data. No durable persistence, ORM, or database is present.
+blobs, or binary data. No durable metadata persistence, ORM, or database
+is present. Physical content is persisted separately through
+`IArtifactContentStore`; see `docs/architecture/artifact-content-storage.md`.
 
 ### Capability
 
@@ -583,8 +591,14 @@ persisted metadata with the in-memory physical content:
   Asset ownership (`execution.AssetId`), and execution provenance
   (`execution.Id`) — the executor cannot supply or override
   `ArtifactId`, `AssetId`, `SourceExecutionId`, or `CreatedAt`;
+- persisting physical content through
+  `IArtifactContentStore.TryAddAsync` using the new `ArtifactId`
+  (returns `ArtifactContentPersistenceFailed` if the insert is
+  rejected — content is persisted before metadata);
 - persisting the Artifact through `IArtifactRepository.TryAddAsync`
-  (returns `ArtifactPersistenceFailed` if the insert is rejected);
+  (returns `ArtifactPersistenceFailed` if the insert is rejected, and
+  attempts compensation by deleting the stored content with a
+  non-cancelled token);
 - returning a `ProducedArtifact` pairing the persisted `Artifact` with
   the executor's `CapabilityExecutionOutput.Content` (passed through
   unchanged) on success.
@@ -597,8 +611,11 @@ to the next step. Repeated calls for the same
 produce another Artifact — there is no idempotency or one-shot semantic
 yet. The service depends on `ICapabilityExecutor` directly; no provider
 selection, registry, or resolver is introduced. Physical content is
-returned in-memory only; it is not durably persisted, and may be lost if
-metadata persistence fails after the executor has produced content.
+durably persisted through `IArtifactContentStore` before metadata
+persistence; if metadata persistence fails or throws after content has
+been published, the service attempts compensation by deleting the
+stored content. A residual process-crash orphan window remains — see
+`docs/architecture/artifact-content-storage.md`.
 
 Application services use a Result pattern for expected use-case outcomes.
 `Result<T>` is owned by `Lunar.Application` and does not leak into Core.

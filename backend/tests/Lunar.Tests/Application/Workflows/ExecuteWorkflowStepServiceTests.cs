@@ -100,13 +100,15 @@ public class ExecuteWorkflowStepServiceTests
         IWorkflowExecutionRepository? executionRepository = null,
         IWorkflowDefinitionRepository? definitionRepository = null,
         IArtifactRepository? artifactRepository = null,
-        ICapabilityExecutor? executor = null)
+        ICapabilityExecutor? executor = null,
+        IArtifactContentStore? contentStore = null)
     {
         return new ExecuteWorkflowStepService(
             executionRepository ?? new InMemoryWorkflowExecutionRepository(),
             definitionRepository ?? new InMemoryWorkflowDefinitionRepository(),
             artifactRepository ?? new InMemoryArtifactRepository(),
-            executor ?? new StubCapabilityExecutor());
+            executor ?? new StubCapabilityExecutor(),
+            contentStore ?? new TrackingArtifactContentStore());
     }
 
 
@@ -1427,6 +1429,368 @@ public class ExecuteWorkflowStepServiceTests
     }
 
 
+    // ---- Content storage integration tests ----
+
+    [Fact]
+    public async Task ExecuteAsync_Success_ShouldPersistContentBeforeMetadata()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId);
+
+        var operations = new List<string>();
+        var contentStore = new TrackingArtifactContentStore(operations);
+        var artifactRepository = new TrackingArtifactRepository(operations);
+        var executor = new StubCapabilityExecutor(content: SharedContent);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository,
+            executor,
+            contentStore);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            new[] { "content:add", "metadata:add" },
+            operations);
+        Assert.Same(SharedContent, contentStore.CapturedContent);
+        Assert.Equal(result.Value!.Artifact.Id, contentStore.CapturedArtifactId);
+        Assert.Equal(result.Value!.Artifact.Id, artifactRepository.CapturedArtifact!.Id);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_CapabilityFailure_ShouldNotCallContentStoreOrMetadata()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var artifactRepository = new TrackingArtifactRepository();
+        var contentStore = new TrackingArtifactContentStore();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId);
+
+        var executor = new FailingCapabilityExecutor(
+            new CapabilityExecutionFailure(
+                CapabilityExecutionFailureKind.QuotaExhausted,
+                null));
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository,
+            executor,
+            contentStore);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsFailure);
+        Assert.False(contentStore.TryAddAsyncWasCalled, "Content store must not be called on capability failure.");
+        Assert.False(artifactRepository.TryAddAsyncWasCalled, "Artifact repository must not be called on capability failure.");
+        Assert.False(contentStore.TryDeleteAsyncWasCalled, "Delete must not be called on capability failure.");
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_ContentStoreRejects_ShouldReturnArtifactContentPersistenceFailedWithExactId()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var trackingExecutor = new StubCapabilityExecutor(content: SharedContent);
+        var artifactRepository = new TrackingArtifactRepository();
+        var contentStore = new RejectingArtifactContentStore();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository,
+            trackingExecutor,
+            contentStore);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsFailure);
+        var error = Assert.IsType<ArtifactContentPersistenceFailed>(result.Error);
+        Assert.Equal(contentStore.CapturedArtifactId, error.ArtifactId);
+        Assert.Equal(1, contentStore.TryAddCallCount);
+        Assert.False(artifactRepository.TryAddAsyncWasCalled, "Metadata must not be persisted when content fails.");
+        Assert.Equal(0, contentStore.TryDeleteCallCount);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_ContentStoreThrows_ShouldPropagateExceptionWithoutMetadataOrCompensation()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var artifactRepository = new TrackingArtifactRepository();
+        var contentStore = new AddThrowsArtifactContentStore(
+            new IOException("Disk full."));
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository,
+            contentStore: contentStore);
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            service.ExecuteAsync(execution.Id, 1, SharedInput));
+
+        Assert.False(artifactRepository.TryAddAsyncWasCalled, "Metadata must not be called when content add throws.");
+        Assert.Equal(0, contentStore.TryDeleteCallCount);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_Success_ShouldNotCallDelete()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var artifactRepository = new InMemoryArtifactRepository();
+        var contentStore = new TrackingArtifactContentStore();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository,
+            contentStore: contentStore);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(contentStore.TryDeleteAsyncWasCalled, "Delete must not be called on full success.");
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_MetadataRejectsAfterContentSuccess_ShouldCompensateAndRemoveContent()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var artifactRepository = new RejectingArtifactRepository();
+        var contentStore = new StatefulArtifactContentStore();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository,
+            contentStore: contentStore);
+
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.True(result.IsFailure);
+        Assert.IsType<ArtifactPersistenceFailed>(result.Error);
+        Assert.True(contentStore.DeleteWasCalled, "Compensation delete must be attempted.");
+        Assert.Equal(contentStore.CapturedArtifactId, contentStore.DeletedArtifactId);
+        Assert.False(contentStore.Contains(contentStore.CapturedArtifactId!.Value),
+            "Content must be absent after compensation.");
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_Compensation_ShouldUseNonCancellableToken()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var artifactRepository = new RejectingArtifactRepository();
+        var contentStore = new StatefulArtifactContentStore();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository,
+            contentStore: contentStore);
+
+        await service.ExecuteAsync(execution.Id, 1, SharedInput);
+
+        Assert.NotNull(contentStore.DeleteCancellationToken);
+        Assert.False(contentStore.DeleteCancellationToken!.Value.CanBeCanceled,
+            "Compensation token must be non-cancellable.");
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_MetadataThrowsAfterContentSuccess_ShouldCompensateAndRemoveContent()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var artifactRepository = new ThrowingArtifactRepository(
+            new InvalidOperationException("Metadata persistence failed."));
+        var contentStore = new StatefulArtifactContentStore();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository,
+            contentStore: contentStore);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ExecuteAsync(execution.Id, 1, SharedInput));
+
+        Assert.True(contentStore.DeleteWasCalled, "Compensation must be attempted when metadata throws.");
+        Assert.False(contentStore.Contains(contentStore.CapturedArtifactId!.Value),
+            "Content must be absent after compensation.");
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_CancellationAfterContentSuccess_ShouldCompensateAndRemoveContent()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var cts = new CancellationTokenSource();
+        var artifactRepository = new CancelBeforeAddArtifactRepository(cts);
+        var contentStore = new StatefulArtifactContentStore();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository,
+            contentStore: contentStore);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.ExecuteAsync(execution.Id, 1, SharedInput, cts.Token));
+
+        Assert.True(contentStore.DeleteWasCalled, "Compensation must be attempted when cancellation occurs after content success.");
+        Assert.False(contentStore.Contains(contentStore.CapturedArtifactId!.Value),
+            "Content must be absent after compensation.");
+        Assert.False(contentStore.DeleteCancellationToken!.Value.CanBeCanceled,
+            "Compensation token must be non-cancellable.");
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_CompensationFailure_ShouldSurfaceDeleteException()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var artifactRepository = new RejectingArtifactRepository();
+        var contentStore = new AddSucceedsDeleteThrowsArtifactContentStore(
+            new IOException("Delete failed."));
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId);
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            artifactRepository,
+            contentStore: contentStore);
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            service.ExecuteAsync(execution.Id, 1, SharedInput));
+
+        Assert.True(contentStore.TryAddAsyncWasCalled, "Content add must have been called and returned true.");
+        Assert.True(contentStore.DeleteWasCalled, "Compensation delete must have been attempted.");
+    }
+
+
     [Fact]
     public void Constructor_NullExecutionRepository_ShouldThrow()
     {
@@ -1435,7 +1799,8 @@ public class ExecuteWorkflowStepServiceTests
                 null!,
                 new InMemoryWorkflowDefinitionRepository(),
                 new InMemoryArtifactRepository(),
-                new StubCapabilityExecutor()));
+                new StubCapabilityExecutor(),
+                new TrackingArtifactContentStore()));
     }
 
 
@@ -1447,7 +1812,8 @@ public class ExecuteWorkflowStepServiceTests
                 new InMemoryWorkflowExecutionRepository(),
                 null!,
                 new InMemoryArtifactRepository(),
-                new StubCapabilityExecutor()));
+                new StubCapabilityExecutor(),
+                new TrackingArtifactContentStore()));
     }
 
 
@@ -1459,7 +1825,8 @@ public class ExecuteWorkflowStepServiceTests
                 new InMemoryWorkflowExecutionRepository(),
                 new InMemoryWorkflowDefinitionRepository(),
                 null!,
-                new StubCapabilityExecutor()));
+                new StubCapabilityExecutor(),
+                new TrackingArtifactContentStore()));
     }
 
 
@@ -1471,6 +1838,20 @@ public class ExecuteWorkflowStepServiceTests
                 new InMemoryWorkflowExecutionRepository(),
                 new InMemoryWorkflowDefinitionRepository(),
                 new InMemoryArtifactRepository(),
+                null!,
+                new TrackingArtifactContentStore()));
+    }
+
+
+    [Fact]
+    public void Constructor_NullContentStore_ShouldThrow()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new ExecuteWorkflowStepService(
+                new InMemoryWorkflowExecutionRepository(),
+                new InMemoryWorkflowDefinitionRepository(),
+                new InMemoryArtifactRepository(),
+                new StubCapabilityExecutor(),
                 null!));
     }
 
@@ -1606,7 +1987,18 @@ public class ExecuteWorkflowStepServiceTests
 
     private sealed class TrackingArtifactRepository : IArtifactRepository
     {
+        private readonly List<string>? _operations;
+
         public bool TryAddAsyncWasCalled { get; private set; }
+
+        public Artifact? CapturedArtifact { get; private set; }
+
+
+        public TrackingArtifactRepository(List<string>? operations = null)
+        {
+            _operations = operations;
+        }
+
 
         public Task<bool> TryAddAsync(
             Artifact artifact,
@@ -1616,6 +2008,8 @@ public class ExecuteWorkflowStepServiceTests
             cancellationToken.ThrowIfCancellationRequested();
 
             TryAddAsyncWasCalled = true;
+            CapturedArtifact = artifact;
+            _operations?.Add("metadata:add");
 
             return Task.FromResult(true);
         }
@@ -1714,6 +2108,31 @@ public class ExecuteWorkflowStepServiceTests
     }
 
 
+    private sealed class ThrowingArtifactRepository : IArtifactRepository
+    {
+        private readonly Exception _exception;
+
+        public ThrowingArtifactRepository(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        public Task<bool> TryAddAsync(
+            Artifact artifact,
+            CancellationToken cancellationToken = default)
+        {
+            throw _exception;
+        }
+
+        public Task<Artifact?> GetAsync(
+            ArtifactId id,
+            CancellationToken cancellationToken = default)
+        {
+            throw _exception;
+        }
+    }
+
+
     private sealed class TrackingWorkflowExecutionRepository : IWorkflowExecutionRepository
     {
         public bool GetAsyncWasCalled { get; private set; }
@@ -1762,6 +2181,345 @@ public class ExecuteWorkflowStepServiceTests
             }
 
             return Task.FromResult<WorkflowExecution?>(null);
+        }
+    }
+
+
+    private sealed class TrackingArtifactContentStore : IArtifactContentStore
+    {
+        private readonly List<string>? _operations;
+
+        public bool TryAddAsyncWasCalled { get; private set; }
+
+        public int TryAddCallCount { get; private set; }
+
+        public ArtifactId? CapturedArtifactId { get; private set; }
+
+        public ArtifactContent? CapturedContent { get; private set; }
+
+        public bool TryDeleteAsyncWasCalled { get; private set; }
+
+        public int TryDeleteCallCount { get; private set; }
+
+        public ArtifactId? DeletedArtifactId { get; private set; }
+
+        public CancellationToken? DeleteCancellationToken { get; private set; }
+
+
+        public TrackingArtifactContentStore(List<string>? operations = null)
+        {
+            _operations = operations;
+        }
+
+
+        public Task<bool> TryAddAsync(
+            ArtifactId artifactId,
+            ArtifactContent content,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            ArgumentNullException.ThrowIfNull(content);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            TryAddAsyncWasCalled = true;
+            TryAddCallCount++;
+            CapturedArtifactId = artifactId;
+            CapturedContent = content;
+            _operations?.Add("content:add");
+
+            return Task.FromResult(true);
+        }
+
+        public Task<ArtifactContent?> GetAsync(
+            ArtifactId artifactId,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult<ArtifactContent?>(CapturedContent);
+        }
+
+        public Task<bool> TryDeleteAsync(
+            ArtifactId artifactId,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            TryDeleteAsyncWasCalled = true;
+            TryDeleteCallCount++;
+            DeletedArtifactId = artifactId;
+            DeleteCancellationToken = cancellationToken;
+
+            return Task.FromResult(true);
+        }
+    }
+
+
+    private sealed class RejectingArtifactContentStore : IArtifactContentStore
+    {
+        public bool TryAddAsyncWasCalled { get; private set; }
+
+        public int TryAddCallCount { get; private set; }
+
+        public int TryDeleteCallCount { get; private set; }
+
+        public ArtifactId? CapturedArtifactId { get; private set; }
+
+
+        public Task<bool> TryAddAsync(
+            ArtifactId artifactId,
+            ArtifactContent content,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            ArgumentNullException.ThrowIfNull(content);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            TryAddAsyncWasCalled = true;
+            TryAddCallCount++;
+            CapturedArtifactId = artifactId;
+
+            return Task.FromResult(false);
+        }
+
+        public Task<ArtifactContent?> GetAsync(
+            ArtifactId artifactId,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult<ArtifactContent?>(null);
+        }
+
+        public Task<bool> TryDeleteAsync(
+            ArtifactId artifactId,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            TryDeleteCallCount++;
+
+            return Task.FromResult(false);
+        }
+    }
+
+
+    private sealed class StatefulArtifactContentStore : IArtifactContentStore
+    {
+        private readonly HashSet<ArtifactId> _present = new();
+
+        public ArtifactId? CapturedArtifactId { get; private set; }
+
+        public ArtifactContent? CapturedContent { get; private set; }
+
+        public bool DeleteWasCalled { get; private set; }
+
+        public ArtifactId? DeletedArtifactId { get; private set; }
+
+        public CancellationToken? DeleteCancellationToken { get; private set; }
+
+
+        public bool Contains(ArtifactId id) => _present.Contains(id);
+
+
+        public Task<bool> TryAddAsync(
+            ArtifactId artifactId,
+            ArtifactContent content,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            ArgumentNullException.ThrowIfNull(content);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            CapturedArtifactId = artifactId;
+            CapturedContent = content;
+
+            if (_present.Add(artifactId))
+            {
+                return Task.FromResult(true);
+            }
+
+            return Task.FromResult(false);
+        }
+
+        public Task<ArtifactContent?> GetAsync(
+            ArtifactId artifactId,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult<ArtifactContent?>(
+                _present.Contains(artifactId) ? CapturedContent : null);
+        }
+
+        public Task<bool> TryDeleteAsync(
+            ArtifactId artifactId,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            DeleteWasCalled = true;
+            DeletedArtifactId = artifactId;
+            DeleteCancellationToken = cancellationToken;
+
+            _present.Remove(artifactId);
+
+            return Task.FromResult(true);
+        }
+    }
+
+
+    private sealed class AddThrowsArtifactContentStore : IArtifactContentStore
+    {
+        private readonly Exception _exception;
+
+        public int TryDeleteCallCount { get; private set; }
+
+
+        public AddThrowsArtifactContentStore(Exception exception)
+        {
+            _exception = exception;
+        }
+
+
+        public Task<bool> TryAddAsync(
+            ArtifactId artifactId,
+            ArtifactContent content,
+            CancellationToken cancellationToken = default)
+        {
+            throw _exception;
+        }
+
+        public Task<ArtifactContent?> GetAsync(
+            ArtifactId artifactId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<ArtifactContent?>(null);
+        }
+
+        public Task<bool> TryDeleteAsync(
+            ArtifactId artifactId,
+            CancellationToken cancellationToken = default)
+        {
+            TryDeleteCallCount++;
+
+            return Task.FromResult(false);
+        }
+    }
+
+
+    private sealed class AddSucceedsDeleteThrowsArtifactContentStore : IArtifactContentStore
+    {
+        private readonly Exception _deleteException;
+
+        public bool TryAddAsyncWasCalled { get; private set; }
+
+        public bool DeleteWasCalled { get; private set; }
+
+
+        public AddSucceedsDeleteThrowsArtifactContentStore(Exception deleteException)
+        {
+            _deleteException = deleteException;
+        }
+
+
+        public Task<bool> TryAddAsync(
+            ArtifactId artifactId,
+            ArtifactContent content,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            ArgumentNullException.ThrowIfNull(content);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            TryAddAsyncWasCalled = true;
+
+            return Task.FromResult(true);
+        }
+
+        public Task<ArtifactContent?> GetAsync(
+            ArtifactId artifactId,
+            CancellationToken cancellationToken = default)
+        {
+            if (artifactId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "Artifact identifier cannot be empty.",
+                    nameof(artifactId));
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult<ArtifactContent?>(null);
+        }
+
+        public Task<bool> TryDeleteAsync(
+            ArtifactId artifactId,
+            CancellationToken cancellationToken = default)
+        {
+            DeleteWasCalled = true;
+
+            throw _deleteException;
         }
     }
 }
