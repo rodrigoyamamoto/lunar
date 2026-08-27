@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Api;
 
@@ -63,7 +64,7 @@ public sealed class LunarApiFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<IArtifactContentStore>();
             services.AddSingleton<IArtifactContentStore>(_ =>
-                new LocalFileArtifactContentStore(_contentRootPath));
+                new LocalFileArtifactContentStore(_contentRootPath, NullLogger<LocalFileArtifactContentStore>.Instance));
         });
     }
 

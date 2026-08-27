@@ -8,6 +8,7 @@ using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.FileSystem;
 using Lunar.Infrastructure.Persistence;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Integration;
 
@@ -46,7 +47,7 @@ public class DurableArtifactContentRoundTripTests : IDisposable
         var executionRepository = new InMemoryWorkflowExecutionRepository();
         var definitionRepository = new InMemoryWorkflowDefinitionRepository();
         var artifactRepository = new InMemoryArtifactRepository();
-        var contentStore = new LocalFileArtifactContentStore(_rootPath);
+        var contentStore = new LocalFileArtifactContentStore(_rootPath, NullLogger<LocalFileArtifactContentStore>.Instance);
         var definitionId = WorkflowDefinitionId.New();
 
         var definition = new WorkflowDefinition(
@@ -73,7 +74,8 @@ public class DurableArtifactContentRoundTripTests : IDisposable
             definitionRepository,
             artifactRepository,
             executor,
-            contentStore);
+            contentStore,
+            NullLogger<ExecuteWorkflowStepService>.Instance);
 
         var result = await service.ExecuteAsync(execution.Id, 1, new TextPromptInput("test prompt"));
 
@@ -82,7 +84,7 @@ public class DurableArtifactContentRoundTripTests : IDisposable
 
         // A brand-new store instance pointed at the same root must retrieve
         // the exact content persisted by the service.
-        var newStore = new LocalFileArtifactContentStore(_rootPath);
+        var newStore = new LocalFileArtifactContentStore(_rootPath, NullLogger<LocalFileArtifactContentStore>.Instance);
         var retrieved = await newStore.GetAsync(artifactId);
 
         var binary = Assert.IsType<BinaryArtifactContent>(retrieved);
@@ -99,7 +101,7 @@ public class DurableArtifactContentRoundTripTests : IDisposable
         var executionRepository = new InMemoryWorkflowExecutionRepository();
         var definitionRepository = new InMemoryWorkflowDefinitionRepository();
         var artifactRepository = new RejectingArtifactRepository();
-        var contentStore = new LocalFileArtifactContentStore(_rootPath);
+        var contentStore = new LocalFileArtifactContentStore(_rootPath, NullLogger<LocalFileArtifactContentStore>.Instance);
         var definitionId = WorkflowDefinitionId.New();
 
         var definition = new WorkflowDefinition(
@@ -126,7 +128,8 @@ public class DurableArtifactContentRoundTripTests : IDisposable
             definitionRepository,
             artifactRepository,
             executor,
-            contentStore);
+            contentStore,
+            NullLogger<ExecuteWorkflowStepService>.Instance);
 
         var result = await service.ExecuteAsync(execution.Id, 1, new TextPromptInput("test prompt"));
 
@@ -137,7 +140,7 @@ public class DurableArtifactContentRoundTripTests : IDisposable
         var rejectedArtifactId = artifactRepository.CapturedArtifact!.Id;
 
         // A new store instance must confirm content was removed by compensation.
-        var newStore = new LocalFileArtifactContentStore(_rootPath);
+        var newStore = new LocalFileArtifactContentStore(_rootPath, NullLogger<LocalFileArtifactContentStore>.Instance);
         var retrieved = await newStore.GetAsync(rejectedArtifactId);
 
         Assert.Null(retrieved);
@@ -151,7 +154,7 @@ public class DurableArtifactContentRoundTripTests : IDisposable
         var definitionRepository = new InMemoryWorkflowDefinitionRepository();
         var artifactRepository = new ThrowingArtifactRepository(
             new InvalidOperationException("Metadata persistence failed."));
-        var contentStore = new LocalFileArtifactContentStore(_rootPath);
+        var contentStore = new LocalFileArtifactContentStore(_rootPath, NullLogger<LocalFileArtifactContentStore>.Instance);
         var definitionId = WorkflowDefinitionId.New();
 
         var definition = new WorkflowDefinition(
@@ -178,14 +181,15 @@ public class DurableArtifactContentRoundTripTests : IDisposable
             definitionRepository,
             artifactRepository,
             executor,
-            contentStore);
+            contentStore,
+            NullLogger<ExecuteWorkflowStepService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ExecuteAsync(execution.Id, 1, new TextPromptInput("test prompt")));
 
         var thrownArtifactId = artifactRepository.CapturedArtifact!.Id;
 
-        var newStore = new LocalFileArtifactContentStore(_rootPath);
+        var newStore = new LocalFileArtifactContentStore(_rootPath, NullLogger<LocalFileArtifactContentStore>.Instance);
         var retrieved = await newStore.GetAsync(thrownArtifactId);
 
         Assert.Null(retrieved);

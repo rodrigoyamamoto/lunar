@@ -8,6 +8,7 @@ using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.Providers.Cloudflare;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Infrastructure.Providers.Cloudflare;
 
@@ -53,7 +54,7 @@ public class CloudflareWorkersAiTextToImageExecutorTests
         FakeHttpMessageHandler handler,
         CloudflareWorkersAiConfiguration? configuration = null)
     {
-        return new CloudflareWorkersAiTextToImageExecutor(CreateClient(handler, configuration));
+        return new CloudflareWorkersAiTextToImageExecutor(CreateClient(handler, configuration), NullLogger<CloudflareWorkersAiTextToImageExecutor>.Instance);
     }
 
     private static CapabilityExecutionRequest CreateRequest(string prompt) =>
@@ -1189,7 +1190,7 @@ public class CloudflareWorkersAiTextToImageExecutorTests
     public void Executor_NullClient_ShouldThrow()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new CloudflareWorkersAiTextToImageExecutor(null!));
+            new CloudflareWorkersAiTextToImageExecutor(null!, NullLogger<CloudflareWorkersAiTextToImageExecutor>.Instance));
     }
 
 

@@ -12,6 +12,7 @@ current task, then expand the survey if this guide is stale or incomplete.
 - Survey baseline: `5553d26` (`feat: add first Lunar product generation loop`)
 - Baseline validation: build/test passed, 693 tests, 0 warnings
 - Current asset-generation-gallery working-tree validation: 725 tests, 0 warnings
+- Current controlled-observability-foundation working-tree validation: 762 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -97,7 +98,8 @@ Implemented:
 - unit tests for the implemented domain behaviour;
 - Infrastructure repository tests;
 - Application service tests;
-- repository and project boundaries.
+- repository and project boundaries;
+- controlled observability foundation: `ApplicationTelemetry` and `InfrastructureTelemetry` static classes owning `ActivitySource` and `Meter` instances; structured `ILogger<T>` logs with `TraceId`/`SpanId` correlation via activity scope; bounded metric tags (outcome, failure stage, failure kind, provider, model); Cloudflare `HttpClient` framework logging noise reduction; prompt privacy (length only, never content); failure stage classification (`FailureStageClassifier`); telemetry tests covering structured logs, activities, metrics, cancellation, unexpected exceptions, and prompt privacy.
 
 Still scaffolding or intentionally absent:
 
@@ -235,12 +237,14 @@ Read these before changing the related area:
 - `docs/decisions/ADR-002-domain-modeling-principles.md` — domain design rules
 - `docs/decisions/ADR-003-package-management.md` — central NuGet versions
 - `docs/decisions/ADR-004-workflow-definition-versioning.md` — workflow definition version identity
+- `docs/decisions/ADR-005-observability-foundation.md` — controlled observability foundation (activities, metrics, structured logs)
 - `docs/architecture/lunar-domain-boundaries.md` — ownership and dependency map
 - `docs/architecture/asset-lifecycle-model.md` — Asset and Artifact semantics
 - `docs/architecture/workflow-execution-model.md` — execution lifecycle
 - `docs/architecture/workflow-definition-model.md` — workflow definition and capability model
 - `docs/architecture/application-error-handling.md` — Application Result pattern and error classification
 - `docs/architecture/artifact-content-storage.md` — durable content storage boundary and local filesystem adapter
+- `docs/architecture/observability.md` — controlled observability foundation (activities, metrics, structured logs, TraceId/SpanId correlation)
 
 Accepted ADRs describe binding decisions. Architecture documents describe the
 current model. Code and tests implement that model. If they disagree, do not
@@ -1241,6 +1245,10 @@ Approval requires:
 
 - restore and compilation success;
 - zero compiler warnings unless a pre-existing warning is documented;
+  backend builds treat warnings as errors via `backend/Directory.Build.props`
+  (`TreatWarningsAsErrors=true`); new compiler/analyzer warnings must be
+  fixed rather than suppressed unless an explicit reviewed exception is
+  justified;
 - all tests passing from freshly compiled current source;
 - formatting verification success;
 - no whitespace errors;

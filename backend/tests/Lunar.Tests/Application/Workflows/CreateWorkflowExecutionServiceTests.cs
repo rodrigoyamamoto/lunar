@@ -5,6 +5,7 @@ using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.Persistence;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Application.Workflows;
 
@@ -21,7 +22,8 @@ public class CreateWorkflowExecutionServiceTests
             new CreateWorkflowExecutionService(
                 null!,
                 new InMemoryWorkflowDefinitionRepository(),
-                new InMemoryWorkflowExecutionRepository()));
+                new InMemoryWorkflowExecutionRepository(),
+                NullLogger<CreateWorkflowExecutionService>.Instance));
     }
 
     [Fact]
@@ -31,7 +33,8 @@ public class CreateWorkflowExecutionServiceTests
             new CreateWorkflowExecutionService(
                 new InMemoryAssetRepository(),
                 null!,
-                new InMemoryWorkflowExecutionRepository()));
+                new InMemoryWorkflowExecutionRepository(),
+                NullLogger<CreateWorkflowExecutionService>.Instance));
     }
 
     [Fact]
@@ -41,7 +44,8 @@ public class CreateWorkflowExecutionServiceTests
             new CreateWorkflowExecutionService(
                 new InMemoryAssetRepository(),
                 new InMemoryWorkflowDefinitionRepository(),
-                null!));
+                null!,
+                NullLogger<CreateWorkflowExecutionService>.Instance));
     }
 
     [Fact]
@@ -276,7 +280,8 @@ public class CreateWorkflowExecutionServiceTests
         return new CreateWorkflowExecutionService(
             assetRepository ?? new InMemoryAssetRepository(),
             definitionRepository ?? new InMemoryWorkflowDefinitionRepository(),
-            executionRepository ?? new InMemoryWorkflowExecutionRepository());
+            executionRepository ?? new InMemoryWorkflowExecutionRepository(),
+            NullLogger<CreateWorkflowExecutionService>.Instance);
     }
 
     private static WorkflowDefinition CreateDefinition(WorkflowDefinitionId id, int version)

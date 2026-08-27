@@ -4,6 +4,7 @@ using Lunar.Core.Artifacts;
 using Lunar.Core.Assets;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.Persistence;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Application.Assets;
 
@@ -13,7 +14,7 @@ public class ListAssetArtifactsServiceTests
     public void Constructor_NullAssetRepository_ShouldThrow()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new ListAssetArtifactsService(null!, new InMemoryArtifactRepository()));
+            new ListAssetArtifactsService(null!, new InMemoryArtifactRepository(), NullLogger<ListAssetArtifactsService>.Instance));
     }
 
 
@@ -21,7 +22,7 @@ public class ListAssetArtifactsServiceTests
     public void Constructor_NullArtifactRepository_ShouldThrow()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new ListAssetArtifactsService(new InMemoryAssetRepository(), null!));
+            new ListAssetArtifactsService(new InMemoryAssetRepository(), null!, NullLogger<ListAssetArtifactsService>.Instance));
     }
 
 
@@ -30,7 +31,8 @@ public class ListAssetArtifactsServiceTests
     {
         var service = new ListAssetArtifactsService(
             new InMemoryAssetRepository(),
-            new InMemoryArtifactRepository());
+            new InMemoryArtifactRepository(),
+            NullLogger<ListAssetArtifactsService>.Instance);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             service.ListAsync(new AssetId(Guid.Empty)));
@@ -42,7 +44,8 @@ public class ListAssetArtifactsServiceTests
     {
         var service = new ListAssetArtifactsService(
             new InMemoryAssetRepository(),
-            new InMemoryArtifactRepository());
+            new InMemoryArtifactRepository(),
+            NullLogger<ListAssetArtifactsService>.Instance);
 
         var result = await service.ListAsync(AssetId.New());
 
@@ -56,7 +59,7 @@ public class ListAssetArtifactsServiceTests
     {
         var assetRepository = new InMemoryAssetRepository();
         var artifactRepository = new TrackingArtifactRepository();
-        var service = new ListAssetArtifactsService(assetRepository, artifactRepository);
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, NullLogger<ListAssetArtifactsService>.Instance);
 
         await service.ListAsync(AssetId.New());
 
@@ -73,7 +76,8 @@ public class ListAssetArtifactsServiceTests
 
         var service = new ListAssetArtifactsService(
             assetRepository,
-            new InMemoryArtifactRepository());
+            new InMemoryArtifactRepository(),
+            NullLogger<ListAssetArtifactsService>.Instance);
 
         var result = await service.ListAsync(assetId);
 
@@ -95,7 +99,7 @@ public class ListAssetArtifactsServiceTests
         await artifactRepository.TryAddAsync(CreateArtifact(assetId: assetB, name: "B1"));
         await artifactRepository.TryAddAsync(CreateArtifact(assetId: assetA, name: "A2"));
 
-        var service = new ListAssetArtifactsService(assetRepository, artifactRepository);
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, NullLogger<ListAssetArtifactsService>.Instance);
 
         var result = await service.ListAsync(assetA);
 
@@ -121,7 +125,7 @@ public class ListAssetArtifactsServiceTests
         var newArtifact = CreateArtifact(assetId: assetId, name: "New");
         await artifactRepository.TryAddAsync(newArtifact);
 
-        var service = new ListAssetArtifactsService(assetRepository, artifactRepository);
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, NullLogger<ListAssetArtifactsService>.Instance);
 
         var result = await service.ListAsync(assetId);
 
@@ -146,7 +150,7 @@ public class ListAssetArtifactsServiceTests
 
         var artifactRepository = new FixedReturnArtifactRepository(
             new[] { lowerArtifact, higherArtifact });
-        var service = new ListAssetArtifactsService(assetRepository, artifactRepository);
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, NullLogger<ListAssetArtifactsService>.Instance);
 
         var result = await service.ListAsync(assetId);
 
@@ -175,7 +179,8 @@ public class ListAssetArtifactsServiceTests
 
         var service = new ListAssetArtifactsService(
             assetRepository,
-            new InMemoryArtifactRepository());
+            new InMemoryArtifactRepository(),
+            NullLogger<ListAssetArtifactsService>.Instance);
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -190,7 +195,8 @@ public class ListAssetArtifactsServiceTests
     {
         var service = new ListAssetArtifactsService(
             new ThrowingAssetRepository(),
-            new InMemoryArtifactRepository());
+            new InMemoryArtifactRepository(),
+            NullLogger<ListAssetArtifactsService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ListAsync(AssetId.New()));
@@ -206,7 +212,8 @@ public class ListAssetArtifactsServiceTests
 
         var service = new ListAssetArtifactsService(
             assetRepository,
-            new ThrowingArtifactRepository());
+            new ThrowingArtifactRepository(),
+            NullLogger<ListAssetArtifactsService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ListAsync(assetId));

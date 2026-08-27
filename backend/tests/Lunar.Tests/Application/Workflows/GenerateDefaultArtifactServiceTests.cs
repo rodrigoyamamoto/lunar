@@ -6,6 +6,7 @@ using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.Persistence;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Application.Workflows;
 
@@ -22,7 +23,7 @@ public class GenerateDefaultArtifactServiceTests
     public void Constructor_NullGenerateArtifactService_ShouldThrow()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new GenerateDefaultArtifactService(null!, SharedTarget));
+            new GenerateDefaultArtifactService(null!, SharedTarget, NullLogger<GenerateDefaultArtifactService>.Instance));
     }
 
 
@@ -32,7 +33,7 @@ public class GenerateDefaultArtifactServiceTests
         var generateService = await CreateGenerateArtifactServiceAsync();
 
         Assert.Throws<ArgumentNullException>(() =>
-            new GenerateDefaultArtifactService(generateService, null!));
+            new GenerateDefaultArtifactService(generateService, null!, NullLogger<GenerateDefaultArtifactService>.Instance));
     }
 
 
@@ -206,13 +207,21 @@ public class GenerateDefaultArtifactServiceTests
 
         var generateService = new GenerateArtifactService(
             definitionRepository,
-            new CreateWorkflowExecutionService(assetRepository, definitionRepository, executionRepository),
-            new StartWorkflowExecutionService(executionRepository),
+            new CreateWorkflowExecutionService(
+                assetRepository, definitionRepository, executionRepository,
+                NullLogger<CreateWorkflowExecutionService>.Instance),
+            new StartWorkflowExecutionService(
+                executionRepository,
+                NullLogger<StartWorkflowExecutionService>.Instance),
             new ExecuteWorkflowStepService(
                 executionRepository, definitionRepository,
-                artifactRepository, executor, contentStore));
+                artifactRepository, executor, contentStore,
+                NullLogger<ExecuteWorkflowStepService>.Instance),
+            NullLogger<GenerateArtifactService>.Instance);
 
-        return new GenerateDefaultArtifactService(generateService, SharedTarget);
+        return new GenerateDefaultArtifactService(
+            generateService, SharedTarget,
+            NullLogger<GenerateDefaultArtifactService>.Instance);
     }
 
     private static async Task<GenerateArtifactService> CreateGenerateArtifactServiceAsync()
@@ -222,14 +231,19 @@ public class GenerateDefaultArtifactServiceTests
             new CreateWorkflowExecutionService(
                 new InMemoryAssetRepository(),
                 new InMemoryWorkflowDefinitionRepository(),
-                new InMemoryWorkflowExecutionRepository()),
-            new StartWorkflowExecutionService(new InMemoryWorkflowExecutionRepository()),
+                new InMemoryWorkflowExecutionRepository(),
+                NullLogger<CreateWorkflowExecutionService>.Instance),
+            new StartWorkflowExecutionService(
+                new InMemoryWorkflowExecutionRepository(),
+                NullLogger<StartWorkflowExecutionService>.Instance),
             new ExecuteWorkflowStepService(
                 new InMemoryWorkflowExecutionRepository(),
                 new InMemoryWorkflowDefinitionRepository(),
                 new InMemoryArtifactRepository(),
                 new TrackingExecutor(),
-                new InMemoryContentStore()));
+                new InMemoryContentStore(),
+                NullLogger<ExecuteWorkflowStepService>.Instance),
+            NullLogger<GenerateArtifactService>.Instance);
     }
 
 

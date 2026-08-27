@@ -9,6 +9,7 @@ using Lunar.Infrastructure.FileSystem;
 using Lunar.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Api;
 
@@ -70,7 +71,7 @@ public class ArtifactContentApiTests : IClassFixture<LunarApiFactory>
     {
         using var tempRoot = new TempContentRoot("lunar-empty-content");
         var artifactRepository = new InMemoryArtifactRepository();
-        var contentStore = new LocalFileArtifactContentStore(tempRoot.Path);
+        var contentStore = new LocalFileArtifactContentStore(tempRoot.Path, NullLogger<LocalFileArtifactContentStore>.Instance);
 
         var artifactId = ArtifactId.New();
         var assetId = AssetId.New();
@@ -107,7 +108,7 @@ public class ArtifactContentApiTests : IClassFixture<LunarApiFactory>
     public async Task GetArtifactContent_WithCorruptDurableState_PropagatesInvalidDataException()
     {
         using var tempRoot = new TempContentRoot("lunar-corrupt");
-        var contentStore = new LocalFileArtifactContentStore(tempRoot.Path);
+        var contentStore = new LocalFileArtifactContentStore(tempRoot.Path, NullLogger<LocalFileArtifactContentStore>.Instance);
         var artifactRepository = new InMemoryArtifactRepository();
 
         var artifactId = ArtifactId.New();

@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using Lunar.Core.Artifacts;
 using Lunar.Infrastructure.FileSystem;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Infrastructure.FileSystem;
 
@@ -33,7 +34,7 @@ public class LocalFileArtifactContentStoreTests : IDisposable
 
 
     private LocalFileArtifactContentStore CreateStore() =>
-        new(_rootPath);
+        new(_rootPath, NullLogger<LocalFileArtifactContentStore>.Instance);
 
     private static BinaryArtifactContent CreateContent(byte[]? bytes = null) =>
         new(bytes ?? SampleBytes, SampleMediaType);
@@ -420,8 +421,8 @@ public class LocalFileArtifactContentStoreTests : IDisposable
     [Fact]
     public void Constructor_EmptyRootPath_ShouldThrow()
     {
-        Assert.Throws<ArgumentException>(() => new LocalFileArtifactContentStore(""));
-        Assert.Throws<ArgumentException>(() => new LocalFileArtifactContentStore("   "));
+        Assert.Throws<ArgumentException>(() => new LocalFileArtifactContentStore("", NullLogger<LocalFileArtifactContentStore>.Instance));
+        Assert.Throws<ArgumentException>(() => new LocalFileArtifactContentStore("   ", NullLogger<LocalFileArtifactContentStore>.Instance));
     }
 
 

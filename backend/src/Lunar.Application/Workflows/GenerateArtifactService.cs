@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using Lunar.Application.Artifacts;
 using Lunar.Application.Errors;
 using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
+using Microsoft.Extensions.Logging;
 
 namespace Lunar.Application.Workflows;
 
@@ -12,22 +14,26 @@ public sealed class GenerateArtifactService
     private readonly CreateWorkflowExecutionService _createWorkflowExecutionService;
     private readonly StartWorkflowExecutionService _startWorkflowExecutionService;
     private readonly ExecuteWorkflowStepService _executeWorkflowStepService;
+    private readonly ILogger<GenerateArtifactService> _logger;
 
     public GenerateArtifactService(
         IWorkflowDefinitionRepository workflowDefinitionRepository,
         CreateWorkflowExecutionService createWorkflowExecutionService,
         StartWorkflowExecutionService startWorkflowExecutionService,
-        ExecuteWorkflowStepService executeWorkflowStepService)
+        ExecuteWorkflowStepService executeWorkflowStepService,
+        ILogger<GenerateArtifactService> logger)
     {
         ArgumentNullException.ThrowIfNull(workflowDefinitionRepository);
         ArgumentNullException.ThrowIfNull(createWorkflowExecutionService);
         ArgumentNullException.ThrowIfNull(startWorkflowExecutionService);
         ArgumentNullException.ThrowIfNull(executeWorkflowStepService);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _workflowDefinitionRepository = workflowDefinitionRepository;
         _createWorkflowExecutionService = createWorkflowExecutionService;
         _startWorkflowExecutionService = startWorkflowExecutionService;
         _executeWorkflowStepService = executeWorkflowStepService;
+        _logger = logger;
     }
 
 
@@ -69,6 +75,17 @@ public sealed class GenerateArtifactService
 
         ArgumentNullException.ThrowIfNull(input);
 
+        using var activity = ApplicationTelemetry.ActivitySource.StartActivity(
+            ApplicationTelemetry.WorkflowGenerateActivityName);
+
+        if (activity is not null)
+        {
+            activity.SetTag(ApplicationTelemetry.AssetIdTag, assetId.Value.ToString());
+            activity.SetTag(ApplicationTelemetry.WorkflowDefinitionIdTag, workflowDefinitionId.Value.ToString());
+            activity.SetTag(ApplicationTelemetry.WorkflowDefinitionVersionTag, workflowDefinitionVersion);
+            activity.SetTag(ApplicationTelemetry.WorkflowStepPositionTag, stepPosition);
+        }
+
         var definition = await _workflowDefinitionRepository.GetAsync(
             workflowDefinitionId,
             workflowDefinitionVersion,
@@ -76,6 +93,13 @@ public sealed class GenerateArtifactService
 
         if (definition is null)
         {
+            if (activity is not null)
+            {
+                activity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeFailure);
+                activity.SetTag(ApplicationTelemetry.FailureStageTag, ApplicationTelemetry.StageWorkflowPrevalidation);
+                activity.SetStatus(ActivityStatusCode.Error);
+            }
+
             return Result<GeneratedArtifact>.Failure(
                 new WorkflowDefinitionNotFound(
                     workflowDefinitionId,
@@ -86,6 +110,13 @@ public sealed class GenerateArtifactService
 
         if (step.Position != stepPosition)
         {
+            if (activity is not null)
+            {
+                activity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeFailure);
+                activity.SetTag(ApplicationTelemetry.FailureStageTag, ApplicationTelemetry.StageWorkflowPrevalidation);
+                activity.SetStatus(ActivityStatusCode.Error);
+            }
+
             return Result<GeneratedArtifact>.Failure(
                 new WorkflowStepNotFound(
                     definition.Id,
@@ -93,43 +124,104 @@ public sealed class GenerateArtifactService
                     stepPosition));
         }
 
-        var createResult = await _createWorkflowExecutionService.CreateAsync(
-            assetId,
-            workflowDefinitionId,
-            workflowDefinitionVersion,
-            cancellationToken);
+        WorkflowExecutionId executionId;
 
-        if (createResult.IsFailure)
+        using (var createActivity = ApplicationTelemetry.ActivitySource.StartActivity(
+            ApplicationTelemetry.WorkflowExecutionCreateActivityName))
         {
-            return Result<GeneratedArtifact>.Failure(createResult.Error!);
+            var createResult = await _createWorkflowExecutionService.CreateAsync(
+                assetId,
+                workflowDefinitionId,
+                workflowDefinitionVersion,
+                cancellationToken);
+
+            if (createResult.IsFailure)
+            {
+                if (activity is not null)
+                {
+                    activity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeFailure);
+                    activity.SetTag(ApplicationTelemetry.FailureStageTag, ApplicationTelemetry.StageWorkflowExecutionCreation);
+                    activity.SetStatus(ActivityStatusCode.Error);
+                }
+
+                return Result<GeneratedArtifact>.Failure(createResult.Error!);
+            }
+
+            executionId = createResult.Value!.Id;
+
+            if (createActivity is not null)
+            {
+                createActivity.SetTag(ApplicationTelemetry.WorkflowExecutionIdTag, executionId.Value.ToString());
+            }
         }
 
-        var execution = createResult.Value!;
-
-        var startResult = await _startWorkflowExecutionService.StartAsync(
-            execution.Id,
-            expectedRevision: 0,
-            cancellationToken);
-
-        if (startResult.IsFailure)
+        using (var startActivity = ApplicationTelemetry.ActivitySource.StartActivity(
+            ApplicationTelemetry.WorkflowExecutionStartActivityName))
         {
-            return Result<GeneratedArtifact>.Failure(startResult.Error!);
+            if (startActivity is not null)
+            {
+                startActivity.SetTag(ApplicationTelemetry.WorkflowExecutionIdTag, executionId.Value.ToString());
+            }
+
+            var startResult = await _startWorkflowExecutionService.StartAsync(
+                executionId,
+                expectedRevision: 0,
+                cancellationToken);
+
+            if (startResult.IsFailure)
+            {
+                if (activity is not null)
+                {
+                    activity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeFailure);
+                    activity.SetTag(ApplicationTelemetry.FailureStageTag, ApplicationTelemetry.StageWorkflowExecutionStart);
+                    activity.SetStatus(ActivityStatusCode.Error);
+                }
+
+                return Result<GeneratedArtifact>.Failure(startResult.Error!);
+            }
         }
 
-        var executeResult = await _executeWorkflowStepService.ExecuteAsync(
-            execution.Id,
-            stepPosition,
-            input,
-            cancellationToken);
+        Result<ProducedArtifact> executeResult;
+
+        using (var stepActivity = ApplicationTelemetry.ActivitySource.StartActivity(
+            ApplicationTelemetry.WorkflowStepExecuteActivityName))
+        {
+            if (stepActivity is not null)
+            {
+                stepActivity.SetTag(ApplicationTelemetry.WorkflowExecutionIdTag, executionId.Value.ToString());
+                stepActivity.SetTag(ApplicationTelemetry.WorkflowStepPositionTag, stepPosition);
+                stepActivity.SetTag(ApplicationTelemetry.CapabilityIdTag, step.CapabilityId.Value.ToString());
+            }
+
+            executeResult = await _executeWorkflowStepService.ExecuteAsync(
+                executionId,
+                stepPosition,
+                input,
+                cancellationToken);
+        }
 
         if (executeResult.IsFailure)
         {
+            if (activity is not null)
+            {
+                activity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeFailure);
+                activity.SetStatus(ActivityStatusCode.Error);
+            }
+
             return Result<GeneratedArtifact>.Failure(executeResult.Error!);
+        }
+
+        if (activity is not null)
+        {
+            activity.SetTag(ApplicationTelemetry.WorkflowExecutionIdTag, executionId.Value.ToString());
+            activity.SetTag(ApplicationTelemetry.ArtifactIdTag, executeResult.Value!.Artifact.Id.Value.ToString());
+            activity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeSuccess);
+            activity.SetStatus(ActivityStatusCode.Ok);
         }
 
         return Result<GeneratedArtifact>.Success(
             new GeneratedArtifact(
-                execution.Id,
+                executionId,
                 executeResult.Value!));
     }
 }

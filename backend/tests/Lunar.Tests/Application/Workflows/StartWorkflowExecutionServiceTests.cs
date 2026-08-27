@@ -4,6 +4,7 @@ using Lunar.Application.Workflows;
 using Lunar.Core.Assets;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.Persistence;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Application.Workflows;
 
@@ -65,7 +66,8 @@ public class StartWorkflowExecutionServiceTests
         IWorkflowExecutionRepository? executionRepository = null)
     {
         return new StartWorkflowExecutionService(
-            executionRepository ?? new InMemoryWorkflowExecutionRepository());
+            executionRepository ?? new InMemoryWorkflowExecutionRepository(),
+            NullLogger<StartWorkflowExecutionService>.Instance);
     }
 
 
@@ -423,7 +425,7 @@ public class StartWorkflowExecutionServiceTests
     public void Constructor_NullRepository_ShouldThrow()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new StartWorkflowExecutionService(null!));
+            new StartWorkflowExecutionService(null!, NullLogger<StartWorkflowExecutionService>.Instance));
     }
 
 

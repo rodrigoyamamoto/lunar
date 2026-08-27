@@ -7,6 +7,7 @@ using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.Persistence;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Application.Workflows;
 
@@ -108,7 +109,8 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository ?? new InMemoryWorkflowDefinitionRepository(),
             artifactRepository ?? new InMemoryArtifactRepository(),
             executor ?? new StubCapabilityExecutor(),
-            contentStore ?? new TrackingArtifactContentStore());
+            contentStore ?? new TrackingArtifactContentStore(),
+            NullLogger<ExecuteWorkflowStepService>.Instance);
     }
 
 
@@ -1800,7 +1802,8 @@ public class ExecuteWorkflowStepServiceTests
                 new InMemoryWorkflowDefinitionRepository(),
                 new InMemoryArtifactRepository(),
                 new StubCapabilityExecutor(),
-                new TrackingArtifactContentStore()));
+                new TrackingArtifactContentStore(),
+                NullLogger<ExecuteWorkflowStepService>.Instance));
     }
 
 
@@ -1813,7 +1816,8 @@ public class ExecuteWorkflowStepServiceTests
                 null!,
                 new InMemoryArtifactRepository(),
                 new StubCapabilityExecutor(),
-                new TrackingArtifactContentStore()));
+                new TrackingArtifactContentStore(),
+                NullLogger<ExecuteWorkflowStepService>.Instance));
     }
 
 
@@ -1826,7 +1830,8 @@ public class ExecuteWorkflowStepServiceTests
                 new InMemoryWorkflowDefinitionRepository(),
                 null!,
                 new StubCapabilityExecutor(),
-                new TrackingArtifactContentStore()));
+                new TrackingArtifactContentStore(),
+                NullLogger<ExecuteWorkflowStepService>.Instance));
     }
 
 
@@ -1839,7 +1844,8 @@ public class ExecuteWorkflowStepServiceTests
                 new InMemoryWorkflowDefinitionRepository(),
                 new InMemoryArtifactRepository(),
                 null!,
-                new TrackingArtifactContentStore()));
+                new TrackingArtifactContentStore(),
+                NullLogger<ExecuteWorkflowStepService>.Instance));
     }
 
 
@@ -1852,7 +1858,8 @@ public class ExecuteWorkflowStepServiceTests
                 new InMemoryWorkflowDefinitionRepository(),
                 new InMemoryArtifactRepository(),
                 new StubCapabilityExecutor(),
-                null!));
+                null!,
+                NullLogger<ExecuteWorkflowStepService>.Instance));
     }
 
 

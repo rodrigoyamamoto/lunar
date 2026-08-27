@@ -5,6 +5,7 @@ using Lunar.Core.Artifacts;
 using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Application.Artifacts;
 
@@ -31,7 +32,8 @@ public class GetArtifactContentServiceTests
         Assert.Throws<ArgumentNullException>(() =>
             new GetArtifactContentService(
                 null!,
-                new TrackingArtifactContentStore()));
+                new TrackingArtifactContentStore(),
+                NullLogger<GetArtifactContentService>.Instance));
     }
 
     [Fact]
@@ -40,7 +42,8 @@ public class GetArtifactContentServiceTests
         Assert.Throws<ArgumentNullException>(() =>
             new GetArtifactContentService(
                 new TrackingArtifactRepository(),
-                null!));
+                null!,
+                NullLogger<GetArtifactContentService>.Instance));
     }
 
     [Fact]
@@ -152,7 +155,8 @@ public class GetArtifactContentServiceTests
     {
         return new GetArtifactContentService(
             artifactRepository ?? new TrackingArtifactRepository(),
-            contentStore ?? new TrackingArtifactContentStore());
+            contentStore ?? new TrackingArtifactContentStore(),
+            NullLogger<GetArtifactContentService>.Instance);
     }
 
 

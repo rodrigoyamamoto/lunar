@@ -40,10 +40,19 @@ public static class GenerationEndpoints
         var assetId = new AssetId(request.AssetId);
         var input = new TextPromptInput(request.Prompt);
 
-        var result = await generateDefaultArtifactService.GenerateAsync(
-            assetId,
-            input,
-            cancellationToken);
+        Result<GeneratedArtifact> result;
+
+        try
+        {
+            result = await generateDefaultArtifactService.GenerateAsync(
+                assetId,
+                input,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
 
         if (result.IsFailure)
         {

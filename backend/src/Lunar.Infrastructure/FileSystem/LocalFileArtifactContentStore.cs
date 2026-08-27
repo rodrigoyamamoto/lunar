@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Lunar.Core.Artifacts;
+using Microsoft.Extensions.Logging;
 
 namespace Lunar.Infrastructure.FileSystem;
 
@@ -19,9 +21,12 @@ public sealed class LocalFileArtifactContentStore : IArtifactContentStore
     };
 
     private readonly DirectoryInfo _root;
+    private readonly ILogger<LocalFileArtifactContentStore> _logger;
 
 
-    public LocalFileArtifactContentStore(string rootPath)
+    public LocalFileArtifactContentStore(
+        string rootPath,
+        ILogger<LocalFileArtifactContentStore> logger)
     {
         if (string.IsNullOrWhiteSpace(rootPath))
         {
@@ -29,6 +34,8 @@ public sealed class LocalFileArtifactContentStore : IArtifactContentStore
                 "Root path cannot be null, empty, or whitespace.",
                 nameof(rootPath));
         }
+
+        ArgumentNullException.ThrowIfNull(logger);
 
         var root = new DirectoryInfo(rootPath);
 
@@ -38,6 +45,7 @@ public sealed class LocalFileArtifactContentStore : IArtifactContentStore
         }
 
         _root = root;
+        _logger = logger;
     }
 
 
@@ -63,6 +71,7 @@ public sealed class LocalFileArtifactContentStore : IArtifactContentStore
                 "Only BinaryArtifactContent is supported by LocalFileArtifactContentStore.");
         }
 
+        var stopwatch = Stopwatch.StartNew();
         var finalDirectory = GetArtifactDirectory(artifactId);
 
         if (finalDirectory.Exists)
@@ -72,6 +81,14 @@ public sealed class LocalFileArtifactContentStore : IArtifactContentStore
 
         var tempDirectory = CreateUniqueTempDirectory();
         var published = false;
+
+        using var writeActivity = InfrastructureTelemetry.ActivitySource.StartActivity(
+            InfrastructureTelemetry.ContentStoreWriteActivityName);
+
+        if (writeActivity is not null)
+        {
+            writeActivity.SetTag(InfrastructureTelemetry.ArtifactIdTag, artifactId.Value.ToString());
+        }
 
         try
         {
@@ -97,6 +114,22 @@ public sealed class LocalFileArtifactContentStore : IArtifactContentStore
             }
 
             published = true;
+
+            stopwatch.Stop();
+
+            if (writeActivity is not null)
+            {
+                writeActivity.SetTag(InfrastructureTelemetry.ContentSizeBytesTag, binaryContent.Data.Length);
+                writeActivity.SetTag(InfrastructureTelemetry.OperationOutcomeTag, InfrastructureTelemetry.OutcomeSuccess);
+                writeActivity.SetStatus(ActivityStatusCode.Ok);
+            }
+
+            _logger.LogDebug(
+                "Content store write completed. ArtifactId={ArtifactId} DurationMs={DurationMs:F0} SizeBytes={SizeBytes}",
+                artifactId.Value,
+                stopwatch.Elapsed.TotalMilliseconds,
+                binaryContent.Data.Length);
+
             return true;
         }
         finally
@@ -122,11 +155,20 @@ public sealed class LocalFileArtifactContentStore : IArtifactContentStore
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        var stopwatch = Stopwatch.StartNew();
         var finalDirectory = GetArtifactDirectory(artifactId);
 
         if (!finalDirectory.Exists)
         {
             return null;
+        }
+
+        using var readActivity = InfrastructureTelemetry.ActivitySource.StartActivity(
+            InfrastructureTelemetry.ContentStoreReadActivityName);
+
+        if (readActivity is not null)
+        {
+            readActivity.SetTag(InfrastructureTelemetry.ArtifactIdTag, artifactId.Value.ToString());
         }
 
         var metadataFile = new FileInfo(Path.Combine(finalDirectory.FullName, MetadataFileName));
@@ -154,6 +196,21 @@ public sealed class LocalFileArtifactContentStore : IArtifactContentStore
             throw new InvalidDataException(
                 $"Artifact content file is empty for {artifactId}.");
         }
+
+        stopwatch.Stop();
+
+        if (readActivity is not null)
+        {
+            readActivity.SetTag(InfrastructureTelemetry.ContentSizeBytesTag, bytes.Length);
+            readActivity.SetTag(InfrastructureTelemetry.OperationOutcomeTag, InfrastructureTelemetry.OutcomeSuccess);
+            readActivity.SetStatus(ActivityStatusCode.Ok);
+        }
+
+        _logger.LogDebug(
+            "Content store read completed. ArtifactId={ArtifactId} DurationMs={DurationMs:F0} SizeBytes={SizeBytes}",
+            artifactId.Value,
+            stopwatch.Elapsed.TotalMilliseconds,
+            bytes.Length);
 
         return new BinaryArtifactContent(bytes, metadata.MediaType!);
     }

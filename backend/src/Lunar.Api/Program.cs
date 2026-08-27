@@ -10,6 +10,9 @@ using Lunar.Core.Workflows;
 using Lunar.Infrastructure.FileSystem;
 using Lunar.Infrastructure.Persistence;
 using Lunar.Infrastructure.Providers.Cloudflare;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +28,20 @@ builder.Services
         options => !string.IsNullOrWhiteSpace(options.LocalRootPath),
         "ArtifactContentStorage:LocalRootPath must be configured.")
     .ValidateOnStart();
+
+builder.Logging.Configure(options =>
+{
+    options.ActivityTrackingOptions =
+        ActivityTrackingOptions.TraceId
+        | ActivityTrackingOptions.SpanId;
+});
+
+builder.Services.Configure<SimpleConsoleFormatterOptions>(
+    ConsoleFormatterNames.Simple,
+    options =>
+    {
+        options.IncludeScopes = true;
+    });
 
 builder.Services.AddHttpClient("CloudflareWorkersAi", client =>
 {
@@ -58,12 +75,13 @@ builder.Services.AddSingleton<IArtifactRepository, InMemoryArtifactRepository>()
 builder.Services.AddSingleton<IArtifactContentStore>(sp =>
 {
     var options = sp.GetRequiredService<IOptions<LocalFileArtifactContentStoreOptions>>().Value;
+    var logger = sp.GetRequiredService<ILogger<LocalFileArtifactContentStore>>();
 
     var rootPath = Path.IsPathRooted(options.LocalRootPath)
         ? options.LocalRootPath
         : Path.Combine(builder.Environment.ContentRootPath, options.LocalRootPath);
 
-    return new LocalFileArtifactContentStore(rootPath);
+    return new LocalFileArtifactContentStore(rootPath, logger);
 });
 
 builder.Services.AddTransient<CreateAssetService>();

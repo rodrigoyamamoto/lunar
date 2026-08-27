@@ -7,6 +7,7 @@ using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.Persistence;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Application.Workflows;
 
@@ -39,9 +40,13 @@ public class GenerateArtifactServiceTests
                 new CreateWorkflowExecutionService(
                     new InMemoryAssetRepository(),
                     new InMemoryWorkflowDefinitionRepository(),
-                    new InMemoryWorkflowExecutionRepository()),
-                new StartWorkflowExecutionService(new InMemoryWorkflowExecutionRepository()),
-                CreateStubExecuteService()));
+                    new InMemoryWorkflowExecutionRepository(),
+                    NullLogger<CreateWorkflowExecutionService>.Instance),
+                new StartWorkflowExecutionService(
+                    new InMemoryWorkflowExecutionRepository(),
+                    NullLogger<StartWorkflowExecutionService>.Instance),
+                CreateStubExecuteService(),
+                NullLogger<GenerateArtifactService>.Instance));
     }
 
     [Fact]
@@ -51,8 +56,11 @@ public class GenerateArtifactServiceTests
             new GenerateArtifactService(
                 new InMemoryWorkflowDefinitionRepository(),
                 null!,
-                new StartWorkflowExecutionService(new InMemoryWorkflowExecutionRepository()),
-                CreateStubExecuteService()));
+                new StartWorkflowExecutionService(
+                    new InMemoryWorkflowExecutionRepository(),
+                    NullLogger<StartWorkflowExecutionService>.Instance),
+                CreateStubExecuteService(),
+                NullLogger<GenerateArtifactService>.Instance));
     }
 
     [Fact]
@@ -64,9 +72,11 @@ public class GenerateArtifactServiceTests
                 new CreateWorkflowExecutionService(
                     new InMemoryAssetRepository(),
                     new InMemoryWorkflowDefinitionRepository(),
-                    new InMemoryWorkflowExecutionRepository()),
+                    new InMemoryWorkflowExecutionRepository(),
+                    NullLogger<CreateWorkflowExecutionService>.Instance),
                 null!,
-                CreateStubExecuteService()));
+                CreateStubExecuteService(),
+                NullLogger<GenerateArtifactService>.Instance));
     }
 
     [Fact]
@@ -78,9 +88,13 @@ public class GenerateArtifactServiceTests
                 new CreateWorkflowExecutionService(
                     new InMemoryAssetRepository(),
                     new InMemoryWorkflowDefinitionRepository(),
-                    new InMemoryWorkflowExecutionRepository()),
-                new StartWorkflowExecutionService(new InMemoryWorkflowExecutionRepository()),
-                null!));
+                    new InMemoryWorkflowExecutionRepository(),
+                    NullLogger<CreateWorkflowExecutionService>.Instance),
+                new StartWorkflowExecutionService(
+                    new InMemoryWorkflowExecutionRepository(),
+                    NullLogger<StartWorkflowExecutionService>.Instance),
+                null!,
+                NullLogger<GenerateArtifactService>.Instance));
     }
 
 
@@ -579,16 +593,21 @@ public class GenerateArtifactServiceTests
         contentStore ??= new InMemoryArtifactContentStore();
 
         var createService = new CreateWorkflowExecutionService(
-            assetRepository, definitionRepository, executionRepository);
+            assetRepository, definitionRepository, executionRepository,
+            NullLogger<CreateWorkflowExecutionService>.Instance);
 
-        var startService = new StartWorkflowExecutionService(executionRepository);
+        var startService = new StartWorkflowExecutionService(
+            executionRepository,
+            NullLogger<StartWorkflowExecutionService>.Instance);
 
         var executeService = new ExecuteWorkflowStepService(
             executionRepository, definitionRepository,
-            artifactRepository, executor, contentStore);
+            artifactRepository, executor, contentStore,
+            NullLogger<ExecuteWorkflowStepService>.Instance);
 
         return new GenerateArtifactService(
-            definitionRepository, createService, startService, executeService);
+            definitionRepository, createService, startService, executeService,
+            NullLogger<GenerateArtifactService>.Instance);
     }
 
     private static ExecuteWorkflowStepService CreateStubExecuteService()
@@ -598,7 +617,8 @@ public class GenerateArtifactServiceTests
             new InMemoryWorkflowDefinitionRepository(),
             new InMemoryArtifactRepository(),
             new TrackingCapabilityExecutor(),
-            new InMemoryArtifactContentStore());
+            new InMemoryArtifactContentStore(),
+            NullLogger<ExecuteWorkflowStepService>.Instance);
     }
 
     private static WorkflowDefinition CreateDefinition(WorkflowDefinitionId id, int version)

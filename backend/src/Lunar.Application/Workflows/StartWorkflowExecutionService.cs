@@ -1,18 +1,23 @@
 using Lunar.Application.Errors;
 using Lunar.Core.Workflows;
+using Microsoft.Extensions.Logging;
 
 namespace Lunar.Application.Workflows;
 
 public sealed class StartWorkflowExecutionService
 {
     private readonly IWorkflowExecutionRepository _workflowExecutionRepository;
+    private readonly ILogger<StartWorkflowExecutionService> _logger;
 
     public StartWorkflowExecutionService(
-        IWorkflowExecutionRepository workflowExecutionRepository)
+        IWorkflowExecutionRepository workflowExecutionRepository,
+        ILogger<StartWorkflowExecutionService> logger)
     {
         ArgumentNullException.ThrowIfNull(workflowExecutionRepository);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _workflowExecutionRepository = workflowExecutionRepository;
+        _logger = logger;
     }
 
 
@@ -70,6 +75,10 @@ public sealed class StartWorkflowExecutionService
                     workflowExecutionId,
                     expectedRevision));
         }
+
+        _logger.LogDebug(
+            "Workflow execution started. WorkflowExecutionId={WorkflowExecutionId}",
+            workflowExecutionId.Value);
 
         return Result<WorkflowExecution>.Success(persisted);
     }

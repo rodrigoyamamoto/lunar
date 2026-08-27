@@ -20,6 +20,9 @@ public sealed class CloudflareWorkersAiClient
         _configuration = configuration;
     }
 
+
+    internal string TextToImageModelId => _configuration.TextToImageModelId;
+
     internal async Task<CloudflareImageGenerationResult> GenerateImageAsync(
         string prompt,
         CancellationToken cancellationToken)

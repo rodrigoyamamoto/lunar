@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using Lunar.Application.Artifacts;
 using Lunar.Application.Errors;
 using Lunar.Core.Artifacts;
 using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
+using Microsoft.Extensions.Logging;
 
 namespace Lunar.Application.Workflows;
 
@@ -13,25 +15,29 @@ public sealed class ExecuteWorkflowStepService
     private readonly IArtifactRepository _artifactRepository;
     private readonly ICapabilityExecutor _capabilityExecutor;
     private readonly IArtifactContentStore _artifactContentStore;
+    private readonly ILogger<ExecuteWorkflowStepService> _logger;
 
     public ExecuteWorkflowStepService(
         IWorkflowExecutionRepository workflowExecutionRepository,
         IWorkflowDefinitionRepository workflowDefinitionRepository,
         IArtifactRepository artifactRepository,
         ICapabilityExecutor capabilityExecutor,
-        IArtifactContentStore artifactContentStore)
+        IArtifactContentStore artifactContentStore,
+        ILogger<ExecuteWorkflowStepService> logger)
     {
         ArgumentNullException.ThrowIfNull(workflowExecutionRepository);
         ArgumentNullException.ThrowIfNull(workflowDefinitionRepository);
         ArgumentNullException.ThrowIfNull(artifactRepository);
         ArgumentNullException.ThrowIfNull(capabilityExecutor);
         ArgumentNullException.ThrowIfNull(artifactContentStore);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _workflowExecutionRepository = workflowExecutionRepository;
         _workflowDefinitionRepository = workflowDefinitionRepository;
         _artifactRepository = artifactRepository;
         _capabilityExecutor = capabilityExecutor;
         _artifactContentStore = artifactContentStore;
+        _logger = logger;
     }
 
 
@@ -101,9 +107,46 @@ public sealed class ExecuteWorkflowStepService
             step.Position,
             input);
 
-        var outcome = await _capabilityExecutor.ExecuteAsync(
-            request,
-            cancellationToken);
+        CapabilityExecutionOutcome outcome;
+
+        using (var capabilityActivity = ApplicationTelemetry.ActivitySource.StartActivity(
+            ApplicationTelemetry.CapabilityExecuteActivityName))
+        {
+            if (capabilityActivity is not null)
+            {
+                capabilityActivity.SetTag(ApplicationTelemetry.CapabilityIdTag, step.CapabilityId.Value.ToString());
+                capabilityActivity.SetTag(ApplicationTelemetry.WorkflowExecutionIdTag, workflowExecutionId.Value.ToString());
+                capabilityActivity.SetTag(ApplicationTelemetry.WorkflowStepPositionTag, stepPosition);
+            }
+
+            var capabilityStopwatch = Stopwatch.StartNew();
+
+            outcome = await _capabilityExecutor.ExecuteAsync(
+                request,
+                cancellationToken);
+
+            capabilityStopwatch.Stop();
+
+            ApplicationTelemetry.CapabilityExecutionDuration.Record(
+                capabilityStopwatch.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>(ApplicationTelemetry.OutcomeTag,
+                    outcome is CapabilityExecutionSucceeded
+                        ? ApplicationTelemetry.OutcomeSuccess
+                        : ApplicationTelemetry.OutcomeFailure));
+
+            if (capabilityActivity is not null)
+            {
+                if (outcome is CapabilityExecutionSucceeded)
+                {
+                    capabilityActivity.SetStatus(ActivityStatusCode.Ok);
+                }
+                else if (outcome is CapabilityExecutionFailed failed)
+                {
+                    capabilityActivity.SetTag(ApplicationTelemetry.FailureKindTag, failed.Failure.Kind.ToString());
+                    capabilityActivity.SetStatus(ActivityStatusCode.Error);
+                }
+            }
+        }
 
         if (outcome is null)
         {
@@ -125,10 +168,45 @@ public sealed class ExecuteWorkflowStepService
                         output.SourceArtifactIds,
                         execution.Id);
 
-                    var contentAdded = await _artifactContentStore.TryAddAsync(
-                        artifact.Id,
-                        output.Content,
-                        cancellationToken);
+                    var contentSizeBytes = output.Content is BinaryArtifactContent binary
+                        ? binary.Data.Length
+                        : 0;
+
+                    var contentStopwatch = Stopwatch.StartNew();
+
+                    bool contentAdded;
+
+                    using (var contentActivity = ApplicationTelemetry.ActivitySource.StartActivity(
+                        ApplicationTelemetry.ArtifactContentPersistActivityName))
+                    {
+                        if (contentActivity is not null)
+                        {
+                            contentActivity.SetTag(ApplicationTelemetry.ArtifactIdTag, artifact.Id.Value.ToString());
+                        }
+
+                        contentAdded = await _artifactContentStore.TryAddAsync(
+                            artifact.Id,
+                            output.Content,
+                            cancellationToken);
+
+                        if (!contentAdded && contentActivity is not null)
+                        {
+                            contentActivity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeFailure);
+                            contentActivity.SetStatus(ActivityStatusCode.Error);
+                        }
+                        else if (contentAdded && contentActivity is not null)
+                        {
+                            contentActivity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeSuccess);
+                            contentActivity.SetStatus(ActivityStatusCode.Ok);
+                        }
+                    }
+
+                    contentStopwatch.Stop();
+
+                    ApplicationTelemetry.ArtifactContentPersistenceDuration.Record(
+                        contentStopwatch.Elapsed.TotalMilliseconds,
+                        new KeyValuePair<string, object?>(ApplicationTelemetry.OutcomeTag,
+                            contentAdded ? ApplicationTelemetry.OutcomeSuccess : ApplicationTelemetry.OutcomeFailure));
 
                     if (!contentAdded)
                     {
@@ -140,6 +218,14 @@ public sealed class ExecuteWorkflowStepService
 
                     try
                     {
+                        using var metadataActivity = ApplicationTelemetry.ActivitySource.StartActivity(
+                            ApplicationTelemetry.ArtifactMetadataPersistActivityName);
+
+                        if (metadataActivity is not null)
+                        {
+                            metadataActivity.SetTag(ApplicationTelemetry.ArtifactIdTag, artifact.Id.Value.ToString());
+                        }
+
                         var persisted = await _artifactRepository.TryAddAsync(
                             artifact,
                             cancellationToken);
@@ -148,8 +234,20 @@ public sealed class ExecuteWorkflowStepService
 
                         if (!metadataPersisted)
                         {
+                            if (metadataActivity is not null)
+                            {
+                                metadataActivity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeFailure);
+                                metadataActivity.SetStatus(ActivityStatusCode.Error);
+                            }
+
                             return Result<ProducedArtifact>.Failure(
                                 new ArtifactPersistenceFailed(artifact.Id));
+                        }
+
+                        if (metadataActivity is not null)
+                        {
+                            metadataActivity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeSuccess);
+                            metadataActivity.SetStatus(ActivityStatusCode.Ok);
                         }
 
                         return Result<ProducedArtifact>.Success(
@@ -159,6 +257,10 @@ public sealed class ExecuteWorkflowStepService
                     {
                         if (!metadataPersisted)
                         {
+                            _logger.LogWarning(
+                                "Artifact metadata persistence failed; compensation deleting content. ArtifactId={ArtifactId}",
+                                artifact.Id.Value);
+
                             await _artifactContentStore.TryDeleteAsync(
                                 artifact.Id,
                                 CancellationToken.None);

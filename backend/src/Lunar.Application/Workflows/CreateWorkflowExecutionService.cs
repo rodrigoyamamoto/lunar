@@ -1,6 +1,7 @@
 using Lunar.Application.Errors;
 using Lunar.Core.Assets;
 using Lunar.Core.Workflows;
+using Microsoft.Extensions.Logging;
 
 namespace Lunar.Application.Workflows;
 
@@ -9,19 +10,23 @@ public sealed class CreateWorkflowExecutionService
     private readonly IAssetRepository _assetRepository;
     private readonly IWorkflowDefinitionRepository _workflowDefinitionRepository;
     private readonly IWorkflowExecutionRepository _workflowExecutionRepository;
+    private readonly ILogger<CreateWorkflowExecutionService> _logger;
 
     public CreateWorkflowExecutionService(
         IAssetRepository assetRepository,
         IWorkflowDefinitionRepository workflowDefinitionRepository,
-        IWorkflowExecutionRepository workflowExecutionRepository)
+        IWorkflowExecutionRepository workflowExecutionRepository,
+        ILogger<CreateWorkflowExecutionService> logger)
     {
         ArgumentNullException.ThrowIfNull(assetRepository);
         ArgumentNullException.ThrowIfNull(workflowDefinitionRepository);
         ArgumentNullException.ThrowIfNull(workflowExecutionRepository);
+        ArgumentNullException.ThrowIfNull(logger);
 
         _assetRepository = assetRepository;
         _workflowDefinitionRepository = workflowDefinitionRepository;
         _workflowExecutionRepository = workflowExecutionRepository;
+        _logger = logger;
     }
 
 
@@ -87,6 +92,11 @@ public sealed class CreateWorkflowExecutionService
             return Result<WorkflowExecution>.Failure(
                 new WorkflowExecutionPersistenceFailed(execution.Id));
         }
+
+        _logger.LogDebug(
+            "Workflow execution created. AssetId={AssetId} WorkflowExecutionId={WorkflowExecutionId}",
+            assetId.Value,
+            execution.Id.Value);
 
         return Result<WorkflowExecution>.Success(execution);
     }
