@@ -1,5 +1,6 @@
 import type {
   ApiErrorResponse,
+  ArtifactSummary,
   CreateAssetRequest,
   CreateAssetResponse,
   GenerationRequest,
@@ -53,4 +54,14 @@ export async function generateArtifact(request: GenerationRequest): Promise<Gene
   }
 
   return (await response.json()) as GenerationResponse
+}
+
+export async function listAssetArtifacts(assetId: string): Promise<ArtifactSummary[]> {
+  const response = await fetch(`/api/assets/${assetId}/artifacts`)
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response)
+  }
+
+  return (await response.json()) as ArtifactSummary[]
 }

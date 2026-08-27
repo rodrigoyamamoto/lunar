@@ -8,10 +8,10 @@ current task, then expand the survey if this guide is stale or incomplete.
 
 ## Survey Metadata
 
-- Last surveyed: 2026-08-26
-- Survey baseline: `f9c318f` (`feat: add first generation API vertical`)
-- Baseline validation: restore/build/test passed, 637 tests, 0 warnings
-- Current first-product-loop working-tree validation: 693 tests, 0 warnings
+- Last surveyed: 2026-08-27
+- Survey baseline: `5553d26` (`feat: add first Lunar product generation loop`)
+- Baseline validation: build/test passed, 693 tests, 0 warnings
+- Current asset-generation-gallery working-tree validation: 725 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -73,6 +73,7 @@ Implemented:
 - `CloudflareWorkersAiOptions` Infrastructure configuration;
 - `WorkflowStepNotFound` Application error;
 - `CreateAssetService` Application layer asset creation;
+- `ListAssetArtifactsService` Application layer artifact-by-asset gallery query (validates Asset existence, returns deterministic newest-first ordering);
 - `AssetPersistenceFailed` Application error;
 - `CreateWorkflowExecutionService` Application layer orchestration;
 - `GenerateArtifactService` Application layer generation orchestration (prevalidates step, then Create/Start/Execute);
@@ -83,6 +84,7 @@ Implemented:
 - `ArtifactNotFound` and `ArtifactContentNotFound` Application errors;
 - `FirstProductLoopWorkflowBootstrap` API runtime bootstrap for the built-in text-to-image workflow (stable UUID v7 identities, compatibility-checked, rejects incompatible same ID/version at startup);
 - `POST /api/assets` HTTP endpoint for asset creation (first product loop only, not generic CRUD);
+- `GET /api/assets/{assetId}/artifacts` HTTP endpoint for listing Artifacts by Asset (gallery source of truth, returns summary DTOs with `contentUrl`, no bytes or provider details);
 - `POST /api/generations` HTTP endpoint for artifact generation (thin transport, delegates to `GenerateDefaultArtifactService`, no workflow IDs in request);
 - `GET /api/artifacts/{artifactId}/content` HTTP endpoint for durable content retrieval;
 - `ApplicationErrorHttpMapping` API-owned Application error to HTTP status mapping;
@@ -90,6 +92,7 @@ Implemented:
 - API composition root registering Application services and Infrastructure adapters;
 - HTTP integration tests using `WebApplicationFactory<Program>`;
 - first product loop frontend (React/Vite) with asset creation, generation, preview, and download;
+- asset generation gallery frontend (React/Vite) with multi-output workspace, gallery thumbnails, selection, preview, and download;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
 - Infrastructure repository tests;
@@ -104,6 +107,9 @@ Still scaffolding or intentionally absent:
 - workflow scheduling, retries, and orchestration engine;
 - workflow authoring UI or durable workflow persistence (the built-in text-to-image workflow is runtime bootstrap);
 - capability-to-executor routing (the single Cloudflare executor handles all capabilities);
+- generation input provenance (prompt text is not persisted to Artifact metadata; historical prompt provenance is future work);
+- reference image / image-to-image generation;
+- observability foundation (OpenTelemetry/collector not yet introduced; controlled diagnostics remain planned);
 - authentication, authorization, and user accounts;
 - API versioning, OpenAPI customization, and Swagger UI.
 
@@ -138,12 +144,12 @@ backend/
       FileSystem/          Local filesystem artifact content store
       Providers/           Cloudflare Workers AI adapter
     Lunar.Application/     Application-layer orchestration
-      Assets/              CreateAssetService
+      Assets/              CreateAssetService, ListAssetArtifactsService
       Workflows/           ExecuteWorkflowService, StartWorkflowExecutionService, CreateWorkflowExecutionService, GenerateArtifactService, GenerateDefaultArtifactService, GenerationWorkflowTarget
       Artifacts/           RecordWorkflowArtifactService, GetArtifactContentService, ProducedArtifact, GeneratedArtifact
     Lunar.Api/             Composition/API boundary
       Endpoints/           GenerationEndpoints, ArtifactEndpoints, AssetEndpoints
-      Contracts/           API transport DTOs
+      Contracts/           API transport DTOs (CreateAssetRequest/Response, GenerationRequest/Response, ArtifactSummaryResponse, ApiErrorResponse)
       Http/                ApplicationErrorHttpMapping
       Bootstrap/           FirstProductLoopWorkflowBootstrap
   tests/
@@ -153,7 +159,7 @@ backend/
       Application/         Application service tests
       Api/                 HTTP integration tests
 
-frontend/                  React/Vite first product loop UI
+frontend/                  React/Vite asset generation gallery UI
 workers/                   Future provider, Blender, and contract runtimes
 config/                    Future runtime configuration
 artifacts/                 Generated outputs; contents are Git-ignored
@@ -328,13 +334,54 @@ immutable instance without reconstruction. This differs from `Asset` and
 Core owns `IArtifactRepository`, a persistence contract keyed by
 `ArtifactId`. `TryAddAsync` inserts an Artifact if absent (returns `false`
 if the exact identity already exists; never overwrites). `GetAsync`
-retrieves by ID or returns `null`. Invalid identity arguments are rejected
+retrieves by ID or returns `null`. `GetByAssetIdAsync` returns all
+Artifacts for an exact `AssetId` as a defensive read-only snapshot (empty
+list when no match; does not imply Asset existence; does not traverse
+lineage or inspect content). Invalid identity arguments are rejected
 with `ArgumentException`. Infrastructure provides
 `InMemoryArtifactRepository` as a development/test adapter. The repository
 persists Artifact domain objects only — it does not store physical files,
 blobs, or binary data. No durable metadata persistence, ORM, or database
 is present. Physical content is persisted separately through
 `IArtifactContentStore`; see `docs/architecture/artifact-content-storage.md`.
+
+One Asset can have multiple generated Artifacts. The Application layer
+(`ListAssetArtifactsService`) validates Asset existence, queries Artifacts
+by exact `AssetId`, and returns deterministic newest-first ordering
+(`CreatedAt` descending, then `ArtifactId` descending as tie-break).
+Sort policy is owned by Application, not the repository, so dictionary
+enumeration order is never product behavior. The gallery HTTP endpoint
+(`GET /api/assets/{assetId}/artifacts`) returns summary DTOs with
+`contentUrl` references — no bytes, Base64, filesystem paths, or provider
+details. Prompt text is not persisted to Artifact metadata in the current
+model; generation input provenance is future work.
+
+### Asset Workspace Identity (Frontend)
+
+Once an Asset is created in the frontend workspace, that Asset remains the
+active creative identity for all subsequent generations in that workspace.
+Asset name and type are not edited to implicitly create another Asset. The
+user explicitly chooses `New asset` to start another Asset workspace.
+
+The frontend distinguishes two modes:
+
+```text
+Asset creation mode:
+    name/type are editable
+    first Generate creates the Asset and generates
+Asset workspace mode:
+    name/type are read-only identity display
+    prompt remains editable
+    Generate always uses the active AssetId
+    New asset is the only normal transition back to creation mode
+```
+
+If Asset creation succeeds but generation fails, the frontend remains in
+workspace mode for that Asset. Retry reuses the same `AssetId`. A later
+failed generation preserves the active Asset, previous gallery, and
+currently selected Artifact. `New asset` clears workspace state
+(AssetId, gallery, selection, prompt, errors) without deleting backend
+data — no backend DELETE endpoint exists.
 
 ### Capability
 

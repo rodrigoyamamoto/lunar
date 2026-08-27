@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AssetType, GenerationResponse } from './api/contracts'
-import { createAsset, generateArtifact, LunarApiError } from './api/lunarApi'
+import type { ArtifactSummary, AssetType, GenerationResponse } from './api/contracts'
+import {
+  createAsset,
+  generateArtifact,
+  listAssetArtifacts,
+  LunarApiError,
+} from './api/lunarApi'
 import { mapErrorToMessage } from './api/errorMapping'
 import './App.css'
 
@@ -21,10 +26,12 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('')
   const [generation, setGeneration] = useState<GenerationResponse | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([])
+  const [selectedArtifact, setSelectedArtifact] = useState<ArtifactSummary | null>(null)
+  const [galleryError, setGalleryError] = useState('')
+  const [assetId, setAssetId] = useState<string | null>(null)
 
   const assetIdRef = useRef<string | null>(null)
-  const lastAssetNameRef = useRef<string>('')
-  const lastAssetTypeRef = useRef<AssetType>('Environment')
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const clearElapsedTimer = useCallback(() => {
@@ -48,22 +55,30 @@ export default function App() {
     }
   }, [clearElapsedTimer])
 
-  const handleAssetNameChange = (value: string) => {
-    setAssetName(value)
-    if (assetIdRef.current !== null) {
-      assetIdRef.current = null
-    }
-  }
+  const refreshGallery = useCallback(async (assetId: string) => {
+    try {
+      const list = await listAssetArtifacts(assetId)
+      setArtifacts(list)
+      setGalleryError('')
 
-  const handleAssetTypeChange = (value: AssetType) => {
-    setAssetType(value)
-    if (assetIdRef.current !== null) {
-      assetIdRef.current = null
+      if (list.length > 0) {
+        setSelectedArtifact(list[0])
+      }
+    } catch (error) {
+      if (error instanceof LunarApiError) {
+        setGalleryError(mapErrorToMessage(error))
+      } else {
+        setGalleryError('Could not load generated outputs.')
+      }
     }
-  }
+  }, [])
 
   const handleGenerate = async () => {
-    if (!assetName.trim() || !prompt.trim()) {
+    if (!assetIdRef.current && !assetName.trim()) {
+      return
+    }
+
+    if (!prompt.trim()) {
       return
     }
 
@@ -71,16 +86,11 @@ export default function App() {
     setGeneration(null)
 
     try {
-      if (
-        assetIdRef.current === null ||
-        lastAssetNameRef.current !== assetName ||
-        lastAssetTypeRef.current !== assetType
-      ) {
+      if (assetIdRef.current === null) {
         setUiState('creating')
         const asset = await createAsset({ name: assetName, assetType })
         assetIdRef.current = asset.assetId
-        lastAssetNameRef.current = assetName
-        lastAssetTypeRef.current = assetType
+        setAssetId(asset.assetId)
       }
 
       setUiState('generating')
@@ -94,6 +104,8 @@ export default function App() {
       clearElapsedTimer()
       setGeneration(result)
       setUiState('completed')
+
+      await refreshGallery(assetIdRef.current!)
     } catch (error) {
       clearElapsedTimer()
       setUiState('failed')
@@ -106,10 +118,11 @@ export default function App() {
   }
 
   const handleDownload = async () => {
-    if (!generation) return
+    const target = selectedArtifact
+    if (!target) return
 
     try {
-      const response = await fetch(generation.contentUrl)
+      const response = await fetch(target.contentUrl)
       if (!response.ok) {
         setErrorMessage('Could not download the generated file.')
         return
@@ -119,7 +132,7 @@ export default function App() {
       const objectUrl = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = objectUrl
-      anchor.download = generation.artifactName
+      anchor.download = target.artifactName
       document.body.appendChild(anchor)
       anchor.click()
       document.body.removeChild(anchor)
@@ -137,13 +150,26 @@ export default function App() {
     setErrorMessage('')
     setGeneration(null)
     setElapsedSeconds(0)
+    setArtifacts([])
+    setSelectedArtifact(null)
+    setGalleryError('')
     assetIdRef.current = null
-    lastAssetNameRef.current = ''
-    lastAssetTypeRef.current = 'Environment'
+    setAssetId(null)
+  }
+
+  const handleSelectArtifact = (artifact: ArtifactSummary) => {
+    setSelectedArtifact(artifact)
   }
 
   const isBusy = uiState === 'creating' || uiState === 'generating'
-  const canGenerate = assetName.trim() !== '' && prompt.trim() !== '' && !isBusy
+  const hasAsset = assetId !== null
+  const canGenerate =
+    (!hasAsset ? assetName.trim() !== '' : true) &&
+    prompt.trim() !== '' &&
+    !isBusy
+  const previewTarget = selectedArtifact
+  const previewName = previewTarget?.artifactName ?? generation?.artifactName ?? ''
+  const previewUrl = previewTarget?.contentUrl ?? generation?.contentUrl ?? ''
 
   return (
     <div className="lunar-app">
@@ -152,97 +178,189 @@ export default function App() {
       </header>
 
       <main className="lunar-main">
-        <section className="lunar-form-section">
-          <div className="lunar-field">
-            <label htmlFor="asset-name">Asset name</label>
-            <input
-              id="asset-name"
-              type="text"
-              value={assetName}
-              onChange={(e) => handleAssetNameChange(e.target.value)}
-              placeholder="Ruined Gothic Watchtower"
-              disabled={isBusy}
-              autoComplete="off"
-            />
-          </div>
+        <div className="lunar-workspace">
+          <section className="lunar-sidebar">
+            <div className="lunar-asset-identity">
+              <h2>{hasAsset ? assetName : 'New Asset'}</h2>
+              {hasAsset && <span className="lunar-asset-type-badge">{assetType}</span>}
+            </div>
 
-          <div className="lunar-field">
-            <label htmlFor="asset-type">Asset type</label>
-            <select
-              id="asset-type"
-              value={assetType}
-              onChange={(e) => handleAssetTypeChange(e.target.value as AssetType)}
-              disabled={isBusy}
-            >
-              {assetTypeOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
+            {hasAsset ? (
+              <div className="lunar-asset-readonly">
+                <div className="lunar-field">
+                  <label htmlFor="asset-name">Asset name</label>
+                  <input
+                    id="asset-name"
+                    type="text"
+                    value={assetName}
+                    readOnly
+                    aria-readonly="true"
+                    autoComplete="off"
+                  />
+                </div>
 
-          <div className="lunar-field">
-            <label htmlFor="prompt">Describe what you want</label>
-            <textarea
-              id="prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="A ruined gothic watchtower under a blood-red eclipse, wet stone, ominous atmosphere..."
-              rows={4}
-              disabled={isBusy}
-            />
-          </div>
+                <div className="lunar-field">
+                  <label htmlFor="asset-type">Asset type</label>
+                  <input
+                    id="asset-type"
+                    type="text"
+                    value={assetType}
+                    readOnly
+                    aria-readonly="true"
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="lunar-field">
+                  <label htmlFor="asset-name">Asset name</label>
+                  <input
+                    id="asset-name"
+                    type="text"
+                    value={assetName}
+                    onChange={(e) => setAssetName(e.target.value)}
+                    placeholder="Ruined Gothic Watchtower"
+                    disabled={isBusy}
+                    autoComplete="off"
+                  />
+                </div>
 
-          <div className="lunar-actions">
-            <button
-              type="button"
-              className="lunar-button-primary"
-              onClick={handleGenerate}
-              disabled={!canGenerate}
-            >
-              {uiState === 'creating' ? 'Preparing…' : 'Generate'}
-            </button>
-            {uiState === 'completed' && (
-              <button type="button" className="lunar-button-secondary" onClick={handleReset}>
-                New asset
-              </button>
+                <div className="lunar-field">
+                  <label htmlFor="asset-type">Asset type</label>
+                  <select
+                    id="asset-type"
+                    value={assetType}
+                    onChange={(e) => setAssetType(e.target.value as AssetType)}
+                    disabled={isBusy}
+                  >
+                    {assetTypeOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
             )}
-          </div>
-        </section>
 
-        {uiState === 'generating' && (
-          <section className="lunar-status-section">
-            <div className="lunar-spinner" aria-hidden="true" />
-            <span className="lunar-status-text">
-              Generating…{elapsedSeconds > 0 ? ` ${elapsedSeconds}s` : ''}
-            </span>
-          </section>
-        )}
-
-        {uiState === 'failed' && (
-          <section className="lunar-error-section">
-            <p className="lunar-error-message">{errorMessage}</p>
-            <button type="button" className="lunar-button-secondary" onClick={handleGenerate}>
-              Try again
-            </button>
-          </section>
-        )}
-
-        {uiState === 'completed' && generation && (
-          <section className="lunar-result-section">
-            <div className="lunar-preview">
-              <img
-                src={generation.contentUrl}
-                alt={generation.artifactName}
-                className="lunar-preview-image"
+            <div className="lunar-field">
+              <label htmlFor="prompt">Describe what you want</label>
+              <textarea
+                id="prompt"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="A ruined gothic watchtower under a blood-red eclipse, wet stone, ominous atmosphere..."
+                rows={4}
+                disabled={isBusy}
               />
             </div>
-            <div className="lunar-result-meta">
-              <span className="lunar-artifact-name">{generation.artifactName}</span>
-              <button type="button" className="lunar-button-secondary" onClick={handleDownload}>
-                Download
+
+            <div className="lunar-actions">
+              <button
+                type="button"
+                className="lunar-button-primary"
+                onClick={handleGenerate}
+                disabled={!canGenerate}
+              >
+                {uiState === 'creating' ? 'Preparing…' : 'Generate'}
               </button>
+              {hasAsset && (
+                <button
+                  type="button"
+                  className="lunar-button-secondary"
+                  onClick={handleReset}
+                  disabled={isBusy}
+                >
+                  New asset
+                </button>
+              )}
+            </div>
+
+            {uiState === 'generating' && (
+              <div className="lunar-status-section">
+                <div className="lunar-spinner" aria-hidden="true" />
+                <span className="lunar-status-text">
+                  Generating…{elapsedSeconds > 0 ? ` ${elapsedSeconds}s` : ''}
+                </span>
+              </div>
+            )}
+
+            {uiState === 'failed' && (
+              <div className="lunar-error-section">
+                <p className="lunar-error-message">{errorMessage}</p>
+                <button
+                  type="button"
+                  className="lunar-button-secondary"
+                  onClick={handleGenerate}
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section className="lunar-preview-section" aria-label="Selected output">
+            {previewUrl ? (
+              <>
+                <div className="lunar-preview">
+                  <img
+                    src={previewUrl}
+                    alt={previewName}
+                    className="lunar-preview-image"
+                  />
+                </div>
+                <div className="lunar-result-meta">
+                  <span className="lunar-artifact-name">{previewName}</span>
+                  <button
+                    type="button"
+                    className="lunar-button-secondary"
+                    onClick={handleDownload}
+                    disabled={!previewTarget}
+                  >
+                    Download
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="lunar-preview-placeholder">
+                <p>Generated outputs will appear here.</p>
+              </div>
+            )}
+          </section>
+        </div>
+
+        {galleryError && (
+          <section className="lunar-gallery-error">
+            <p className="lunar-error-message">{galleryError}</p>
+          </section>
+        )}
+
+        {artifacts.length > 0 && (
+          <section className="lunar-gallery-section" aria-label="Generated outputs">
+            <h3 className="lunar-gallery-title">Generated outputs</h3>
+            <div className="lunar-gallery">
+              {artifacts.map((artifact) => (
+                <button
+                  key={artifact.artifactId}
+                  type="button"
+                  className={
+                    'lunar-gallery-item' +
+                    (selectedArtifact?.artifactId === artifact.artifactId
+                      ? ' lunar-gallery-item-selected'
+                      : '')
+                  }
+                  onClick={() => handleSelectArtifact(artifact)}
+                  aria-pressed={selectedArtifact?.artifactId === artifact.artifactId}
+                  aria-label={`Select ${artifact.artifactName}`}
+                >
+                  <img
+                    src={artifact.contentUrl}
+                    alt={artifact.artifactName}
+                    className="lunar-gallery-thumbnail"
+                  />
+                  <span className="lunar-gallery-item-name">{artifact.artifactName}</span>
+                </button>
+              ))}
             </div>
           </section>
         )}

@@ -2029,6 +2029,13 @@ public class ExecuteWorkflowStepServiceTests
 
             return Task.FromResult<Artifact?>(null);
         }
+
+        public Task<IReadOnlyList<Artifact>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Artifact>>(Array.Empty<Artifact>());
+        }
     }
 
 
@@ -2071,6 +2078,13 @@ public class ExecuteWorkflowStepServiceTests
 
             return Task.FromResult<Artifact?>(null);
         }
+
+        public Task<IReadOnlyList<Artifact>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Artifact>>(Array.Empty<Artifact>());
+        }
     }
 
 
@@ -2105,6 +2119,13 @@ public class ExecuteWorkflowStepServiceTests
 
             return Task.FromResult<Artifact?>(null);
         }
+
+        public Task<IReadOnlyList<Artifact>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Artifact>>(Array.Empty<Artifact>());
+        }
     }
 
 
@@ -2129,6 +2150,13 @@ public class ExecuteWorkflowStepServiceTests
             CancellationToken cancellationToken = default)
         {
             throw _exception;
+        }
+
+        public Task<IReadOnlyList<Artifact>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Artifact>>(Array.Empty<Artifact>());
         }
     }
 

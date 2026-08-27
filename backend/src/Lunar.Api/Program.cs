@@ -67,6 +67,7 @@ builder.Services.AddSingleton<IArtifactContentStore>(sp =>
 });
 
 builder.Services.AddTransient<CreateAssetService>();
+builder.Services.AddTransient<ListAssetArtifactsService>();
 builder.Services.AddTransient<CreateWorkflowExecutionService>();
 builder.Services.AddTransient<StartWorkflowExecutionService>();
 builder.Services.AddTransient<ExecuteWorkflowStepService>();

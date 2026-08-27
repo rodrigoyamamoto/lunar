@@ -571,6 +571,13 @@ public class RecordWorkflowArtifactServiceTests
 
             return Task.FromResult<Artifact?>(null);
         }
+
+        public Task<IReadOnlyList<Artifact>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Artifact>>(Array.Empty<Artifact>());
+        }
     }
 
 
@@ -666,6 +673,13 @@ public class RecordWorkflowArtifactServiceTests
             cancellationToken.ThrowIfCancellationRequested();
 
             return Task.FromResult<Artifact?>(null);
+        }
+
+        public Task<IReadOnlyList<Artifact>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Artifact>>(Array.Empty<Artifact>());
         }
     }
 }

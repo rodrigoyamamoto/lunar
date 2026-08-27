@@ -26,6 +26,15 @@ export interface GenerationResponse {
   contentUrl: string
 }
 
+export interface ArtifactSummary {
+  artifactId: string
+  assetId: string
+  artifactName: string
+  artifactType: string
+  createdAt: string
+  contentUrl: string
+}
+
 export interface ApiErrorResponse {
   code: string
   message: string

@@ -21,6 +21,8 @@ public sealed class LunarApiFactory : WebApplicationFactory<Program>
 
     public InMemoryAssetRepository AssetRepository { get; } = new();
 
+    public InMemoryArtifactRepository ArtifactRepository { get; } = new();
+
     public InMemoryWorkflowDefinitionRepository DefinitionRepository { get; } = new();
 
     public TrackingWorkflowExecutionRepository ExecutionRepository { get; } = new();
@@ -49,6 +51,9 @@ public sealed class LunarApiFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<IAssetRepository>();
             services.AddSingleton<IAssetRepository>(AssetRepository);
+
+            services.RemoveAll<IArtifactRepository>();
+            services.AddSingleton<IArtifactRepository>(ArtifactRepository);
 
             services.RemoveAll<IWorkflowDefinitionRepository>();
             services.AddSingleton<IWorkflowDefinitionRepository>(DefinitionRepository);

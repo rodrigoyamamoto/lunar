@@ -190,6 +190,13 @@ public class GetArtifactContentServiceTests
 
             return Task.FromResult(_artifact);
         }
+
+        public Task<IReadOnlyList<Artifact>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Artifact>>(Array.Empty<Artifact>());
+        }
     }
 
 
@@ -214,6 +221,13 @@ public class GetArtifactContentServiceTests
             CancellationToken cancellationToken = default)
         {
             throw _exception;
+        }
+
+        public Task<IReadOnlyList<Artifact>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<Artifact>>(Array.Empty<Artifact>());
         }
     }
 

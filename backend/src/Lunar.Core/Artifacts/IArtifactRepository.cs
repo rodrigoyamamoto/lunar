@@ -1,3 +1,5 @@
+using Lunar.Core.Assets;
+
 namespace Lunar.Core.Artifacts;
 
 public interface IArtifactRepository
@@ -8,5 +10,9 @@ public interface IArtifactRepository
 
     Task<Artifact?> GetAsync(
         ArtifactId id,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Artifact>> GetByAssetIdAsync(
+        AssetId assetId,
         CancellationToken cancellationToken = default);
 }

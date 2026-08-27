@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Lunar.Core.Artifacts;
+using Lunar.Core.Assets;
 
 namespace Lunar.Infrastructure.Persistence;
 
@@ -33,5 +34,25 @@ public sealed class InMemoryArtifactRepository : IArtifactRepository
         _store.TryGetValue(id, out var stored);
 
         return Task.FromResult(stored);
+    }
+
+    public Task<IReadOnlyList<Artifact>> GetByAssetIdAsync(
+        AssetId assetId,
+        CancellationToken cancellationToken = default)
+    {
+        if (assetId.Value == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Asset identifier cannot be empty.",
+                nameof(assetId));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var matching = _store.Values
+            .Where(artifact => artifact.AssetId == assetId)
+            .ToList();
+
+        return Task.FromResult<IReadOnlyList<Artifact>>(matching.AsReadOnly());
     }
 }

@@ -330,4 +330,149 @@ public class InMemoryArtifactRepositoryTests
 
         Assert.Throws<NotSupportedException>(act);
     }
+
+
+    [Fact]
+    public async Task GetByAssetIdAsync_EmptyAssetId_ShouldThrow()
+    {
+        var repository = new InMemoryArtifactRepository();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            repository.GetByAssetIdAsync(new AssetId(Guid.Empty)));
+    }
+
+
+    [Fact]
+    public async Task GetByAssetIdAsync_PreCancelledToken_ShouldThrow()
+    {
+        var repository = new InMemoryArtifactRepository();
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            repository.GetByAssetIdAsync(AssetId.New(), cts.Token));
+    }
+
+
+    [Fact]
+    public async Task GetByAssetIdAsync_NoMatchingArtifacts_ShouldReturnEmpty()
+    {
+        var repository = new InMemoryArtifactRepository();
+
+        var result = await repository.GetByAssetIdAsync(AssetId.New());
+
+        Assert.Empty(result);
+    }
+
+
+    [Fact]
+    public async Task GetByAssetIdAsync_OneMatchingArtifact_ShouldReturnIt()
+    {
+        var repository = new InMemoryArtifactRepository();
+        var assetId = AssetId.New();
+        var artifact = CreateArtifact(assetId: assetId, name: "Matching Artifact");
+        await repository.TryAddAsync(artifact);
+
+        var result = await repository.GetByAssetIdAsync(assetId);
+
+        Assert.Single(result);
+        Assert.Equal(artifact.Id, result[0].Id);
+        Assert.Equal("Matching Artifact", result[0].Name);
+    }
+
+
+    [Fact]
+    public async Task GetByAssetIdAsync_MatchingAndNonMatching_ShouldReturnOnlyExactAsset()
+    {
+        var repository = new InMemoryArtifactRepository();
+        var assetA = AssetId.New();
+        var assetB = AssetId.New();
+        var artifactA = CreateArtifact(assetId: assetA, name: "Artifact A");
+        var artifactB = CreateArtifact(assetId: assetB, name: "Artifact B");
+        var artifactA2 = CreateArtifact(assetId: assetA, name: "Artifact A2");
+        await repository.TryAddAsync(artifactA);
+        await repository.TryAddAsync(artifactB);
+        await repository.TryAddAsync(artifactA2);
+
+        var result = await repository.GetByAssetIdAsync(assetA);
+
+        Assert.Equal(2, result.Count);
+        var ids = result.Select(a => a.Id).ToHashSet();
+        Assert.Contains(artifactA.Id, ids);
+        Assert.Contains(artifactA2.Id, ids);
+        Assert.DoesNotContain(artifactB.Id, ids);
+    }
+
+
+    [Fact]
+    public async Task GetByAssetIdAsync_MultipleMatching_ShouldReturnAll()
+    {
+        var repository = new InMemoryArtifactRepository();
+        var assetId = AssetId.New();
+        for (var i = 0; i < 5; i++)
+        {
+            await repository.TryAddAsync(CreateArtifact(assetId: assetId, name: $"Artifact {i}"));
+        }
+
+        var result = await repository.GetByAssetIdAsync(assetId);
+
+        Assert.Equal(5, result.Count);
+    }
+
+
+    [Fact]
+    public async Task GetByAssetIdAsync_ReturnedCollectionCannotMutateRepositoryState()
+    {
+        var repository = new InMemoryArtifactRepository();
+        var assetId = AssetId.New();
+        await repository.TryAddAsync(CreateArtifact(assetId: assetId));
+
+        var result = await repository.GetByAssetIdAsync(assetId);
+
+        Assert.Single(result);
+
+        var mutable = result as List<Artifact>;
+        if (mutable is not null)
+        {
+            mutable.Clear();
+        }
+
+        var reRead = await repository.GetByAssetIdAsync(assetId);
+        Assert.Single(reRead);
+    }
+
+
+    [Fact]
+    public async Task GetByAssetIdAsync_DoesNotRemoveStoredData()
+    {
+        var repository = new InMemoryArtifactRepository();
+        var assetId = AssetId.New();
+        var artifact = CreateArtifact(assetId: assetId);
+        await repository.TryAddAsync(artifact);
+
+        await repository.GetByAssetIdAsync(assetId);
+
+        var retrieved = await repository.GetAsync(artifact.Id);
+        Assert.NotNull(retrieved);
+    }
+
+
+    [Fact]
+    public async Task GetByAssetIdAsync_ReturnedArtifactsAreImmutableSnapshots()
+    {
+        var repository = new InMemoryArtifactRepository();
+        var assetId = AssetId.New();
+        var artifact = CreateArtifact(assetId: assetId);
+        await repository.TryAddAsync(artifact);
+
+        var result = await repository.GetByAssetIdAsync(assetId);
+
+        Assert.Single(result);
+        var exposed = result[0].SourceArtifactIds;
+        Assert.IsNotType<List<ArtifactId>>(exposed);
+
+        var act = () => ((ICollection<ArtifactId>)exposed).Add(ArtifactId.New());
+        Assert.Throws<NotSupportedException>(act);
+    }
 }

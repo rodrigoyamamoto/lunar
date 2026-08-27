@@ -3,6 +3,7 @@ using Lunar.Api.Http;
 using Lunar.Application.Assets;
 using Lunar.Application.Errors;
 using Lunar.Core.Assets;
+using Lunar.Core.Artifacts;
 
 namespace Lunar.Api.Endpoints;
 
@@ -16,6 +17,7 @@ public static class AssetEndpoints
         var group = app.MapGroup("/api/assets");
 
         group.MapPost("/", CreateAssetAsync);
+        group.MapGet("/{assetId}/artifacts", ListAssetArtifactsAsync);
 
         return app;
     }
@@ -56,6 +58,43 @@ public static class AssetEndpoints
         };
 
         return Results.Created($"/api/assets/{asset.Id.Value}", response);
+    }
+
+
+    private static async Task<IResult> ListAssetArtifactsAsync(
+        Guid assetId,
+        ListAssetArtifactsService listAssetArtifactsService,
+        CancellationToken cancellationToken)
+    {
+        if (assetId == Guid.Empty)
+        {
+            return BadRequest("invalid_asset_id", "AssetId must be a valid non-empty UUID.");
+        }
+
+        var result = await listAssetArtifactsService.ListAsync(
+            new AssetId(assetId),
+            cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return MapError(result.Error!);
+        }
+
+        var artifacts = result.Value!;
+
+        var response = artifacts
+            .Select(artifact => new ArtifactSummaryResponse
+            {
+                ArtifactId = artifact.Id.Value,
+                AssetId = artifact.AssetId.Value,
+                ArtifactName = artifact.Name,
+                ArtifactType = artifact.Type.ToString(),
+                CreatedAt = artifact.CreatedAt,
+                ContentUrl = $"/api/artifacts/{artifact.Id.Value}/content"
+            })
+            .ToList();
+
+        return Results.Ok(response);
     }
 
 
