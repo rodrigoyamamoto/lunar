@@ -9,9 +9,9 @@ current task, then expand the survey if this guide is stale or incomplete.
 ## Survey Metadata
 
 - Last surveyed: 2026-08-26
-- Survey baseline: `a59413e` (`feat: add durable artifact content storage`)
-- Baseline validation: restore/build/test passed, 541 tests, 0 warnings
-- Current first-generation-api working-tree validation: 637 tests, 0 warnings
+- Survey baseline: `f9c318f` (`feat: add first generation API vertical`)
+- Baseline validation: restore/build/test passed, 637 tests, 0 warnings
+- Current first-product-loop working-tree validation: 693 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -72,17 +72,24 @@ Implemented:
 - `CloudflareWorkersAiTextToImageExecutor` Infrastructure concrete executor;
 - `CloudflareWorkersAiOptions` Infrastructure configuration;
 - `WorkflowStepNotFound` Application error;
+- `CreateAssetService` Application layer asset creation;
+- `AssetPersistenceFailed` Application error;
 - `CreateWorkflowExecutionService` Application layer orchestration;
 - `GenerateArtifactService` Application layer generation orchestration (prevalidates step, then Create/Start/Execute);
+- `GenerateDefaultArtifactService` product-level Application generation using a configured `GenerationWorkflowTarget`;
+- `GenerationWorkflowTarget` Application value object for the configured first-product-loop workflow;
 - `GeneratedArtifact` Application result model pairing `WorkflowExecutionId` with `ProducedArtifact`;
 - `GetArtifactContentService` Application layer read orchestration;
 - `ArtifactNotFound` and `ArtifactContentNotFound` Application errors;
-- `POST /api/generations` HTTP endpoint for artifact generation (thin transport, delegates to `GenerateArtifactService`);
+- `FirstProductLoopWorkflowBootstrap` API runtime bootstrap for the built-in text-to-image workflow (stable UUID v7 identities, compatibility-checked, rejects incompatible same ID/version at startup);
+- `POST /api/assets` HTTP endpoint for asset creation (first product loop only, not generic CRUD);
+- `POST /api/generations` HTTP endpoint for artifact generation (thin transport, delegates to `GenerateDefaultArtifactService`, no workflow IDs in request);
 - `GET /api/artifacts/{artifactId}/content` HTTP endpoint for durable content retrieval;
 - `ApplicationErrorHttpMapping` API-owned Application error to HTTP status mapping;
 - `LocalFileArtifactContentStoreOptions` Infrastructure configuration with `ValidateOnStart` startup validation;
 - API composition root registering Application services and Infrastructure adapters;
 - HTTP integration tests using `WebApplicationFactory<Program>`;
+- first product loop frontend (React/Vite) with asset creation, generation, preview, and download;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
 - Infrastructure repository tests;
@@ -95,7 +102,8 @@ Still scaffolding or intentionally absent:
 - additional provider adapters beyond Cloudflare Workers AI;
 - worker contracts and worker implementations;
 - workflow scheduling, retries, and orchestration engine;
-- production frontend—the current UI is the Vite/React starter;
+- workflow authoring UI or durable workflow persistence (the built-in text-to-image workflow is runtime bootstrap);
+- capability-to-executor routing (the single Cloudflare executor handles all capabilities);
 - authentication, authorization, and user accounts;
 - API versioning, OpenAPI customization, and Swagger UI.
 
@@ -130,21 +138,22 @@ backend/
       FileSystem/          Local filesystem artifact content store
       Providers/           Cloudflare Workers AI adapter
     Lunar.Application/     Application-layer orchestration
-      Workflows/           ExecuteWorkflowService, StartWorkflowExecutionService, CreateWorkflowExecutionService, GenerateArtifactService
+      Assets/              CreateAssetService
+      Workflows/           ExecuteWorkflowService, StartWorkflowExecutionService, CreateWorkflowExecutionService, GenerateArtifactService, GenerateDefaultArtifactService, GenerationWorkflowTarget
       Artifacts/           RecordWorkflowArtifactService, GetArtifactContentService, ProducedArtifact, GeneratedArtifact
     Lunar.Api/             Composition/API boundary
-      Endpoints/           GenerationEndpoints, ArtifactEndpoints
+      Endpoints/           GenerationEndpoints, ArtifactEndpoints, AssetEndpoints
       Contracts/           API transport DTOs
       Http/                ApplicationErrorHttpMapping
+      Bootstrap/           FirstProductLoopWorkflowBootstrap
   tests/
     Lunar.Tests/
       Unit/                Core domain unit tests
       Infrastructure/      Infrastructure adapter tests
       Application/         Application service tests
-      Integration/         Cross-layer integration tests
       Api/                 HTTP integration tests
 
-frontend/                  React/Vite starter application
+frontend/                  React/Vite first product loop UI
 workers/                   Future provider, Blender, and contract runtimes
 config/                    Future runtime configuration
 artifacts/                 Generated outputs; contents are Git-ignored

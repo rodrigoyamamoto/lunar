@@ -27,14 +27,10 @@ public class ArtifactContentApiTests : IClassFixture<LunarApiFactory>
     public async Task GetArtifactContent_AfterSuccessfulGeneration_ReturnsExactBytesAndMediaType()
     {
         var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, version) = await _factory.SeedWorkflowDefinitionAsync();
 
         var generationResponse = await _factory.PostGenerationAsync(new GenerationRequest
         {
             AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 1,
             Prompt = "test prompt"
         });
 
@@ -158,14 +154,10 @@ public class ArtifactContentApiTests : IClassFixture<LunarApiFactory>
     public async Task GetArtifactContent_ResponseDoesNotContainStorageDetails()
     {
         var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, version) = await _factory.SeedWorkflowDefinitionAsync();
 
         var generationResponse = await _factory.PostGenerationAsync(new GenerationRequest
         {
             AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 1,
             Prompt = "test prompt"
         });
 

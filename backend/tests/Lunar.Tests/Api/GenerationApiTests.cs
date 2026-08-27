@@ -2,9 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using Lunar.Api.Contracts;
 using Lunar.Core.Capabilities;
-using Lunar.Core.Workflows;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Lunar.Tests.Api;
 
@@ -23,14 +20,10 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
     public async Task PostGeneration_WithValidRequest_Returns201AndArtifactMetadata()
     {
         var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, version) = await _factory.SeedWorkflowDefinitionAsync();
 
         var request = new GenerationRequest
         {
             AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 1,
             Prompt = "A ruined gothic watchtower under a blood-red eclipse"
         };
 
@@ -57,14 +50,10 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
     public async Task PostGeneration_Success_ResponseDoesNotContainProviderOrStorageDetails()
     {
         var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, version) = await _factory.SeedWorkflowDefinitionAsync();
 
         var request = new GenerationRequest
         {
             AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 1,
             Prompt = "A test prompt"
         };
 
@@ -82,20 +71,17 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
         Assert.DoesNotContain("content.bin", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("metadata.json", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(".tmp-", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("WorkflowDefinitionId", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("StepPosition", json, StringComparison.OrdinalIgnoreCase);
     }
 
 
     [Fact]
     public async Task PostGeneration_WithMissingAsset_Returns404()
     {
-        var (_, version) = await _factory.SeedWorkflowDefinitionAsync();
-
         var request = new GenerationRequest
         {
             AssetId = Guid.NewGuid(),
-            WorkflowDefinitionId = (await _factory.SeedWorkflowDefinitionAsync()).Id.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 1,
             Prompt = "test prompt"
         };
 
@@ -104,59 +90,6 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal(0, _factory.Executor.CallCount);
-    }
-
-
-    [Fact]
-    public async Task PostGeneration_WithMissingWorkflowDefinition_Returns404()
-    {
-        var assetId = await _factory.SeedAssetAsync();
-
-        var request = new GenerationRequest
-        {
-            AssetId = assetId.Value,
-            WorkflowDefinitionId = Guid.NewGuid(),
-            WorkflowDefinitionVersion = 1,
-            StepPosition = 1,
-            Prompt = "test prompt"
-        };
-
-        var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/generations", request);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Equal(0, _factory.Executor.CallCount);
-    }
-
-
-    [Fact]
-    public async Task PostGeneration_WithMissingStep_Returns404AndNoExecutionSideEffects()
-    {
-        var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, version) = await _factory.SeedWorkflowDefinitionAsync();
-        _factory.ExecutionRepository.Reset();
-
-        var request = new GenerationRequest
-        {
-            AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 99,
-            Prompt = "test prompt"
-        };
-
-        var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/generations", request);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-
-        var body = await response.Content.ReadFromJsonAsync<ApiErrorResponse>();
-        Assert.NotNull(body);
-        Assert.Equal("workflow_step_not_found", body!.Code);
-
-        Assert.Equal(0, _factory.Executor.CallCount);
-        Assert.Equal(0, _factory.ExecutionRepository.TryAddCallCount);
-        Assert.Equal(0, _factory.ExecutionRepository.TryUpdateCallCount);
     }
 
 
@@ -164,7 +97,6 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
     public async Task PostGeneration_WithRateLimitedFailure_Returns429AndRetryAfter()
     {
         var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, version) = await _factory.SeedWorkflowDefinitionAsync();
 
         _factory.Executor.Failure = new CapabilityExecutionFailure(
             CapabilityExecutionFailureKind.RateLimited,
@@ -173,9 +105,6 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
         var request = new GenerationRequest
         {
             AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 1,
             Prompt = "test prompt"
         };
 
@@ -199,7 +128,6 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
     public async Task PostGeneration_WithQuotaExhausted_Returns503Not401Or403()
     {
         var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, version) = await _factory.SeedWorkflowDefinitionAsync();
 
         _factory.Executor.Failure = new CapabilityExecutionFailure(
             CapabilityExecutionFailureKind.QuotaExhausted);
@@ -207,9 +135,6 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
         var request = new GenerationRequest
         {
             AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 1,
             Prompt = "test prompt"
         };
 
@@ -230,7 +155,6 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
     public async Task PostGeneration_WithInvalidResponse_Returns502()
     {
         var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, version) = await _factory.SeedWorkflowDefinitionAsync();
 
         _factory.Executor.Failure = new CapabilityExecutionFailure(
             CapabilityExecutionFailureKind.InvalidResponse);
@@ -238,9 +162,6 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
         var request = new GenerationRequest
         {
             AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 1,
             Prompt = "test prompt"
         };
 
@@ -258,82 +179,9 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
     [Fact]
     public async Task PostGeneration_WithEmptyAssetId_Returns400()
     {
-        var (_, version) = await _factory.SeedWorkflowDefinitionAsync();
-
         var request = new GenerationRequest
         {
             AssetId = Guid.Empty,
-            WorkflowDefinitionId = (await _factory.SeedWorkflowDefinitionAsync()).Id.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 1,
-            Prompt = "test prompt"
-        };
-
-        var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/generations", request);
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal(0, _factory.Executor.CallCount);
-    }
-
-
-    [Fact]
-    public async Task PostGeneration_WithEmptyWorkflowDefinitionId_Returns400()
-    {
-        var assetId = await _factory.SeedAssetAsync();
-
-        var request = new GenerationRequest
-        {
-            AssetId = assetId.Value,
-            WorkflowDefinitionId = Guid.Empty,
-            WorkflowDefinitionVersion = 1,
-            StepPosition = 1,
-            Prompt = "test prompt"
-        };
-
-        var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/generations", request);
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal(0, _factory.Executor.CallCount);
-    }
-
-
-    [Fact]
-    public async Task PostGeneration_WithVersionZero_Returns400()
-    {
-        var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, _) = await _factory.SeedWorkflowDefinitionAsync();
-
-        var request = new GenerationRequest
-        {
-            AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = 0,
-            StepPosition = 1,
-            Prompt = "test prompt"
-        };
-
-        var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/generations", request);
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal(0, _factory.Executor.CallCount);
-    }
-
-
-    [Fact]
-    public async Task PostGeneration_WithStepZero_Returns400()
-    {
-        var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, version) = await _factory.SeedWorkflowDefinitionAsync();
-
-        var request = new GenerationRequest
-        {
-            AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 0,
             Prompt = "test prompt"
         };
 
@@ -349,14 +197,10 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
     public async Task PostGeneration_WithBlankPrompt_Returns400()
     {
         var assetId = await _factory.SeedAssetAsync();
-        var (definitionId, version) = await _factory.SeedWorkflowDefinitionAsync();
 
         var request = new GenerationRequest
         {
             AssetId = assetId.Value,
-            WorkflowDefinitionId = definitionId.Value,
-            WorkflowDefinitionVersion = version,
-            StepPosition = 1,
             Prompt = "   "
         };
 
@@ -365,5 +209,102 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(0, _factory.Executor.CallCount);
+    }
+
+
+    [Fact]
+    public async Task PostGeneration_Success_ExactPromptReachesExecutor()
+    {
+        var assetId = await _factory.SeedAssetAsync();
+        var prompt = "a unique test prompt for verification";
+
+        var request = new GenerationRequest
+        {
+            AssetId = assetId.Value,
+            Prompt = prompt
+        };
+
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/api/generations", request);
+        response.EnsureSuccessStatusCode();
+
+        Assert.Equal(1, _factory.Executor.CallCount);
+        var capturedInput = Assert.IsType<TextPromptInput>(_factory.Executor.CapturedRequests[0].Input);
+        Assert.Equal(prompt, capturedInput.Prompt);
+    }
+
+
+    [Fact]
+    public async Task PostGeneration_Success_UsesBootstrappedWorkflow()
+    {
+        var assetId = await _factory.SeedAssetAsync();
+
+        var request = new GenerationRequest
+        {
+            AssetId = assetId.Value,
+            Prompt = "test prompt"
+        };
+
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/api/generations", request);
+        response.EnsureSuccessStatusCode();
+
+        Assert.Equal(1, _factory.Executor.CallCount);
+        Assert.Equal(1, _factory.Executor.CapturedRequests[0].StepPosition);
+    }
+
+
+    [Fact]
+    public async Task PostGeneration_Success_ContentGetReturnsExactBytes()
+    {
+        var assetId = await _factory.SeedAssetAsync();
+
+        var request = new GenerationRequest
+        {
+            AssetId = assetId.Value,
+            Prompt = "test prompt"
+        };
+
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/api/generations", request);
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadFromJsonAsync<GenerationResponse>();
+        Assert.NotNull(body);
+
+        var contentResponse = await client.GetAsync(body!.ContentUrl);
+        Assert.Equal(HttpStatusCode.OK, contentResponse.StatusCode);
+        Assert.Equal("image/jpeg", contentResponse.Content.Headers.ContentType?.MediaType);
+
+        var bytes = await contentResponse.Content.ReadAsByteArrayAsync();
+        Assert.Equal(
+            new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46 },
+            bytes);
+    }
+
+
+    [Fact]
+    public async Task PostGeneration_Success_ContentGetDoesNotCallExecutor()
+    {
+        var assetId = await _factory.SeedAssetAsync();
+
+        var request = new GenerationRequest
+        {
+            AssetId = assetId.Value,
+            Prompt = "test prompt"
+        };
+
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/api/generations", request);
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadFromJsonAsync<GenerationResponse>();
+        Assert.NotNull(body);
+
+        var executorCallsBeforeGet = _factory.Executor.CallCount;
+
+        _ = await client.GetAsync(body!.ContentUrl);
+
+        Assert.Equal(executorCallsBeforeGet, _factory.Executor.CallCount);
     }
 }

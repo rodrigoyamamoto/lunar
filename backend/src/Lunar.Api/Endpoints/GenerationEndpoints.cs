@@ -7,7 +7,6 @@ using Lunar.Application.Workflows;
 using Lunar.Core.Artifacts;
 using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
-using Lunar.Core.Workflows;
 
 namespace Lunar.Api.Endpoints;
 
@@ -25,23 +24,24 @@ public static class GenerationEndpoints
 
     private static async Task<IResult> CreateGenerationAsync(
         GenerationRequest request,
-        GenerateArtifactService generateArtifactService,
+        GenerateDefaultArtifactService generateDefaultArtifactService,
         CancellationToken cancellationToken)
     {
-        if (TryValidateRequest(request, out var validationError))
+        if (request.AssetId == Guid.Empty)
         {
-            return Results.Json(validationError.Response, statusCode: validationError.StatusCode);
+            return BadRequest("invalid_asset_id", "AssetId must be a valid non-empty UUID.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Prompt))
+        {
+            return BadRequest("invalid_prompt", "Prompt cannot be null, empty, or whitespace.");
         }
 
         var assetId = new AssetId(request.AssetId);
-        var workflowDefinitionId = new WorkflowDefinitionId(request.WorkflowDefinitionId);
         var input = new TextPromptInput(request.Prompt);
 
-        var result = await generateArtifactService.GenerateAsync(
+        var result = await generateDefaultArtifactService.GenerateAsync(
             assetId,
-            workflowDefinitionId,
-            request.WorkflowDefinitionVersion,
-            request.StepPosition,
             input,
             cancellationToken);
 
@@ -75,52 +75,15 @@ public static class GenerationEndpoints
     }
 
 
-    private static bool TryValidateRequest(GenerationRequest request, out HttpErrorResult error)
+    private static IResult BadRequest(string code, string message)
     {
-        if (request.AssetId == Guid.Empty)
-        {
-            error = BadRequest("invalid_asset_id", "AssetId must be a valid non-empty UUID.");
-            return true;
-        }
-
-        if (request.WorkflowDefinitionId == Guid.Empty)
-        {
-            error = BadRequest("invalid_workflow_definition_id", "WorkflowDefinitionId must be a valid non-empty UUID.");
-            return true;
-        }
-
-        if (request.WorkflowDefinitionVersion < 1)
-        {
-            error = BadRequest("invalid_workflow_definition_version", "WorkflowDefinitionVersion must be >= 1.");
-            return true;
-        }
-
-        if (request.StepPosition < 1)
-        {
-            error = BadRequest("invalid_step_position", "StepPosition must be >= 1.");
-            return true;
-        }
-
-        if (string.IsNullOrWhiteSpace(request.Prompt))
-        {
-            error = BadRequest("invalid_prompt", "Prompt cannot be null, empty, or whitespace.");
-            return true;
-        }
-
-        error = null!;
-        return false;
-    }
-
-
-    private static HttpErrorResult BadRequest(string code, string message)
-    {
-        return new HttpErrorResult(
-            StatusCodes.Status400BadRequest,
+        return Results.Json(
             new ApiErrorResponse
             {
                 Code = code,
                 Message = message
-            });
+            },
+            statusCode: StatusCodes.Status400BadRequest);
     }
 
 

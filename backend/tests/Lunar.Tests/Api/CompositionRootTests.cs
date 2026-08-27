@@ -1,4 +1,6 @@
+using Lunar.Api.Bootstrap;
 using Lunar.Application.Artifacts;
+using Lunar.Application.Assets;
 using Lunar.Application.Workflows;
 using Lunar.Core.Artifacts;
 using Lunar.Core.Assets;
@@ -27,12 +29,16 @@ public class CompositionRootTests : IClassFixture<LunarApiFactory>
         using var scope = _factory.Services.CreateScope();
         var services = scope.ServiceProvider;
 
+        Assert.NotNull(services.GetRequiredService<CreateAssetService>());
         Assert.NotNull(services.GetRequiredService<CreateWorkflowExecutionService>());
         Assert.NotNull(services.GetRequiredService<StartWorkflowExecutionService>());
         Assert.NotNull(services.GetRequiredService<ExecuteWorkflowStepService>());
         Assert.NotNull(services.GetRequiredService<GetArtifactContentService>());
         Assert.NotNull(services.GetRequiredService<GenerateArtifactService>());
+        Assert.NotNull(services.GetRequiredService<GenerateDefaultArtifactService>());
+        Assert.NotNull(services.GetRequiredService<GenerationWorkflowTarget>());
     }
+
 
     [Fact]
     public void CompositionRoot_ResolvesRepositoriesAsSharedInstances()
@@ -61,11 +67,52 @@ public class CompositionRootTests : IClassFixture<LunarApiFactory>
         Assert.Same(content1, content2);
     }
 
+
     [Fact]
     public void CompositionRoot_ResolvesArtifactContentStoreConfiguration()
     {
         var options = _factory.Services.GetRequiredService<IOptions<LocalFileArtifactContentStoreOptions>>();
         Assert.NotNull(options.Value);
         Assert.False(string.IsNullOrWhiteSpace(options.Value.LocalRootPath));
+    }
+
+
+    [Fact]
+    public async Task CompositionRoot_BootstrapWorkflowExistsAfterStartup()
+    {
+        var repository = _factory.Services.GetRequiredService<IWorkflowDefinitionRepository>();
+
+        var definition = await repository.GetAsync(
+            FirstProductLoopWorkflowBootstrap.TextToImageWorkflowDefinitionId,
+            FirstProductLoopWorkflowBootstrap.WorkflowVersion);
+
+        Assert.NotNull(definition);
+        Assert.Equal("Text to Image", definition!.Name);
+        Assert.Single(definition.Steps);
+        Assert.Equal(1, definition.Steps[0].Position);
+        Assert.Equal(
+            FirstProductLoopWorkflowBootstrap.TextToImageCapabilityId,
+            definition.Steps[0].CapabilityId);
+    }
+
+
+    [Fact]
+    public void CompositionRoot_GenerationTargetMatchesBootstrap()
+    {
+        var target = _factory.Services.GetRequiredService<GenerationWorkflowTarget>();
+
+        Assert.Equal(
+            FirstProductLoopWorkflowBootstrap.TextToImageWorkflowDefinitionId,
+            target.WorkflowDefinitionId);
+        Assert.Equal(FirstProductLoopWorkflowBootstrap.WorkflowVersion, target.Version);
+        Assert.Equal(FirstProductLoopWorkflowBootstrap.StepPosition, target.StepPosition);
+    }
+
+
+    [Fact]
+    public void CompositionRoot_CloudflareExecutorIsReplaceableByTestDouble()
+    {
+        var executor = _factory.Services.GetRequiredService<ICapabilityExecutor>();
+        Assert.IsType<DeterministicCapabilityExecutor>(executor);
     }
 }

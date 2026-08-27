@@ -3,25 +3,54 @@
 ## Status
 
 This is the first HTTP vertical that exposes Lunar's existing artifact
-generation architecture to a future frontend. It is an internal/product
+generation architecture to the product frontend. It is an internal/product
 development v0 contract, not the final public API.
 
 ## Endpoints
 
-### POST /api/generations
+### POST /api/assets
 
-Creates a `WorkflowExecution` for an existing Asset and WorkflowDefinition,
-starts it, executes one workflow step with a `TextPromptInput`, and returns
-the resulting Artifact identity and metadata.
+Creates a new Asset for the first product loop. This endpoint exists only
+to support the product generation loop, not as generic Asset CRUD.
 
 Request:
 
 ```json
 {
+  "name": "Ruined Gothic Watchtower",
+  "assetType": "Environment"
+}
+```
+
+Response (201 Created):
+
+```json
+{
   "assetId": "019...",
-  "workflowDefinitionId": "019...",
-  "workflowDefinitionVersion": 1,
-  "stepPosition": 1,
+  "name": "Ruined Gothic Watchtower",
+  "assetType": "Environment"
+}
+```
+
+Valid `AssetType` values are: `Character`, `Weapon`, `Environment`, `Prop`.
+
+The transport DTO uses a string for `assetType` (not the domain enum). The
+endpoint validates the string against the exact named enum values and rejects
+numeric representations (`"1"`, `1`). This keeps the browser/backend contract
+explicit and prevents accidental enum-serializer symmetry from masking
+contract drift.
+
+### POST /api/generations
+
+Creates a `WorkflowExecution` for an existing Asset using the built-in
+text-to-image workflow, starts it, executes the configured step with a
+`TextPromptInput`, and returns the resulting Artifact identity and metadata.
+
+The product-facing request does not require workflow internals:
+
+```json
+{
+  "assetId": "019...",
   "prompt": "A ruined gothic watchtower under a blood-red eclipse"
 }
 ```
@@ -40,10 +69,10 @@ Response (201 Created):
 }
 ```
 
-The endpoint requires already-existing Lunar identities (`AssetId`,
-`WorkflowDefinitionId`, `WorkflowDefinitionVersion`, `StepPosition`).
-It does not create workflow definitions, hard-code provider details, or
-bypass the workflow model.
+The endpoint resolves the configured `GenerationWorkflowTarget` (workflow
+definition ID, version, and step position) inside Application via
+`GenerateDefaultArtifactService`. The caller never needs to know
+`WorkflowDefinitionId`, `WorkflowDefinitionVersion`, or `StepPosition`.
 
 ### GET /api/artifacts/{artifactId}/content
 
@@ -58,7 +87,9 @@ HTTP request
     ↓
 Lunar.Api (transport/composition boundary)
     ↓
-GenerateArtifactService (Application)
+GenerateDefaultArtifactService (Application, product-level)
+    ↓
+GenerateArtifactService (Application, lower-level)
     ↓
 CreateWorkflowExecutionService → StartWorkflowExecutionService → ExecuteWorkflowStepService
     ↓
@@ -68,9 +99,11 @@ Lunar.Infrastructure adapters
 ```
 
 The API layer owns:
-- transport DTOs (`GenerationRequest`, `GenerationResponse`, `ApiErrorResponse`);
+- transport DTOs (`GenerationRequest`, `GenerationResponse`, `CreateAssetRequest`,
+  `CreateAssetResponse`, `ApiErrorResponse`);
 - endpoint routing and HTTP status mapping;
 - composition root (DI registration, configuration binding, startup validation);
+- `FirstProductLoopWorkflowBootstrap` (runtime workflow seeding);
 - `ApplicationErrorHttpMapping` (deterministic Application error to HTTP status).
 
 The API layer does not own:
@@ -82,9 +115,52 @@ The API layer does not own:
 - Cloudflare logic;
 - filesystem logic.
 
+## Runtime Workflow Bootstrap
+
+`FirstProductLoopWorkflowBootstrap` ensures the built-in text-to-image
+`WorkflowDefinition` exists at application startup. It uses stable UUID v7
+typed identifiers for the workflow definition and capability. The capability
+is named "Text to Image" — provider-neutral. The bootstrap is idempotent and
+safe to run multiple times.
+
+Bootstrap semantics:
+
+```text
+missing                    -> insert expected definition
+existing and compatible    -> no-op
+existing same ID/version
+  but incompatible         -> throw InvalidOperationException at startup
+TryAddAsync returns false
+  (concurrent writer)      -> re-read
+                              compatible    -> success
+                              missing       -> throw
+                              incompatible  -> throw
+```
+
+Compatibility compares: ID, version, exact name, exact step count/order,
+exact step position, and exact capability ID.
+
+The bootstrap is a temporary product-phase composition mechanism while
+workflow authoring and durable workflow persistence are not implemented.
+It is not a future workflow authoring engine.
+
 ## Application Services
 
-The generation endpoint delegates to a single Application use case:
+The asset creation endpoint delegates to:
+
+- `CreateAssetService` — validates the caller-supplied name and `AssetType`,
+  constructs an `Asset` with a Lunar-owned `AssetId`, and persists it via
+  `IAssetRepository.TryAddAsync`. Returns `AssetPersistenceFailed` if the
+  repository rejects the insert.
+
+The generation endpoint delegates to a single product-level Application use case:
+
+- `GenerateDefaultArtifactService` — receives an `AssetId` and
+  `CapabilityExecutionInput`, resolves the configured `GenerationWorkflowTarget`
+  (workflow definition ID, version, step position), and delegates to
+  `GenerateArtifactService`.
+
+The lower-level generation service:
 
 - `GenerateArtifactService` — prevalidates the exact WorkflowDefinition version
   and requested step position before any side effect. If the step is missing,

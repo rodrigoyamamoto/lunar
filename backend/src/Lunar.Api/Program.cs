@@ -1,5 +1,7 @@
+using Lunar.Api.Bootstrap;
 using Lunar.Api.Endpoints;
 using Lunar.Application.Artifacts;
+using Lunar.Application.Assets;
 using Lunar.Application.Workflows;
 using Lunar.Core.Artifacts;
 using Lunar.Core.Assets;
@@ -64,14 +66,26 @@ builder.Services.AddSingleton<IArtifactContentStore>(sp =>
     return new LocalFileArtifactContentStore(rootPath);
 });
 
+builder.Services.AddTransient<CreateAssetService>();
 builder.Services.AddTransient<CreateWorkflowExecutionService>();
 builder.Services.AddTransient<StartWorkflowExecutionService>();
 builder.Services.AddTransient<ExecuteWorkflowStepService>();
 builder.Services.AddTransient<GetArtifactContentService>();
 builder.Services.AddTransient<GenerateArtifactService>();
 
+builder.Services.AddSingleton(new GenerationWorkflowTarget(
+    FirstProductLoopWorkflowBootstrap.TextToImageWorkflowDefinitionId,
+    FirstProductLoopWorkflowBootstrap.WorkflowVersion,
+    FirstProductLoopWorkflowBootstrap.StepPosition));
+
+builder.Services.AddTransient<GenerateDefaultArtifactService>();
+
 var app = builder.Build();
 
+await FirstProductLoopWorkflowBootstrap.EnsureWorkflowExistsAsync(
+    app.Services.GetRequiredService<IWorkflowDefinitionRepository>());
+
+app.MapAssetEndpoints();
 app.MapGenerationEndpoints();
 app.MapArtifactEndpoints();
 
