@@ -9,9 +9,9 @@ current task, then expand the survey if this guide is stale or incomplete.
 ## Survey Metadata
 
 - Last surveyed: 2026-08-26
-- Survey baseline: `52b1749` (`feat: add Cloudflare image generation adapter`)
-- Baseline validation: restore/build/test passed, 488 tests, 0 warnings
-- Current durable-content-storage working-tree validation: 541 tests, 0 warnings
+- Survey baseline: `a59413e` (`feat: add durable artifact content storage`)
+- Baseline validation: restore/build/test passed, 541 tests, 0 warnings
+- Current first-generation-api working-tree validation: 637 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -72,6 +72,17 @@ Implemented:
 - `CloudflareWorkersAiTextToImageExecutor` Infrastructure concrete executor;
 - `CloudflareWorkersAiOptions` Infrastructure configuration;
 - `WorkflowStepNotFound` Application error;
+- `CreateWorkflowExecutionService` Application layer orchestration;
+- `GenerateArtifactService` Application layer generation orchestration (prevalidates step, then Create/Start/Execute);
+- `GeneratedArtifact` Application result model pairing `WorkflowExecutionId` with `ProducedArtifact`;
+- `GetArtifactContentService` Application layer read orchestration;
+- `ArtifactNotFound` and `ArtifactContentNotFound` Application errors;
+- `POST /api/generations` HTTP endpoint for artifact generation (thin transport, delegates to `GenerateArtifactService`);
+- `GET /api/artifacts/{artifactId}/content` HTTP endpoint for durable content retrieval;
+- `ApplicationErrorHttpMapping` API-owned Application error to HTTP status mapping;
+- `LocalFileArtifactContentStoreOptions` Infrastructure configuration with `ValidateOnStart` startup validation;
+- API composition root registering Application services and Infrastructure adapters;
+- HTTP integration tests using `WebApplicationFactory<Program>`;
 - strongly typed UUID v7 identifiers;
 - unit tests for the implemented domain behaviour;
 - Infrastructure repository tests;
@@ -80,14 +91,13 @@ Implemented:
 
 Still scaffolding or intentionally absent:
 
-- API endpoints beyond the template root endpoint;
-- durable metadata persistence, database mappings, and ORM (content storage is now durable via `LocalFileArtifactContentStore`);
+- durable metadata persistence, database mappings, and ORM (content storage is now durable via `LocalFileArtifactContentStore`, but Asset/WorkflowDefinition/WorkflowExecution/Artifact metadata remains in-memory);
 - additional provider adapters beyond Cloudflare Workers AI;
 - worker contracts and worker implementations;
 - workflow scheduling, retries, and orchestration engine;
-- runtime configuration implementations;
 - production frontend—the current UI is the Vite/React starter;
-- integration tests.
+- authentication, authorization, and user accounts;
+- API versioning, OpenAPI customization, and Swagger UI.
 
 Do not infer production readiness from the presence of placeholder folders.
 
@@ -120,15 +130,19 @@ backend/
       FileSystem/          Local filesystem artifact content store
       Providers/           Cloudflare Workers AI adapter
     Lunar.Application/     Application-layer orchestration
-      Workflows/           ExecuteWorkflowService, StartWorkflowExecutionService
-      Artifacts/           RecordWorkflowArtifactService
-    Lunar.Api/             Composition/API boundary; currently template only
+      Workflows/           ExecuteWorkflowService, StartWorkflowExecutionService, CreateWorkflowExecutionService, GenerateArtifactService
+      Artifacts/           RecordWorkflowArtifactService, GetArtifactContentService, ProducedArtifact, GeneratedArtifact
+    Lunar.Api/             Composition/API boundary
+      Endpoints/           GenerationEndpoints, ArtifactEndpoints
+      Contracts/           API transport DTOs
+      Http/                ApplicationErrorHttpMapping
   tests/
     Lunar.Tests/
       Unit/                Core domain unit tests
       Infrastructure/      Infrastructure adapter tests
       Application/         Application service tests
-      Integration/         Placeholder
+      Integration/         Cross-layer integration tests
+      Api/                 HTTP integration tests
 
 frontend/                  React/Vite starter application
 workers/                   Future provider, Blender, and contract runtimes
@@ -146,23 +160,29 @@ The allowed project dependency direction is:
 
 ```text
 Lunar.Api ───────────────> Lunar.Core
+    ├──────> Lunar.Application ───────────> Lunar.Core
     └──────> Lunar.Infrastructure ───────> Lunar.Core
-    (Lunar.Application ───────> Lunar.Core — intended; not yet referenced by Api)
 
 Lunar.Tests ─────────────> Lunar.Core
 Lunar.Tests ─────────────> Lunar.Application
 Lunar.Tests ─────────────> Lunar.Infrastructure
+Lunar.Tests ─────────────> Lunar.Api
 Lunar.Core ──────────────> no Lunar project and no external technology
 ```
 
 Current concrete `Lunar.Api.csproj` project references:
 
 - `Lunar.Core`
+- `Lunar.Application`
 - `Lunar.Infrastructure`
 
-`Lunar.Api` does not currently reference `Lunar.Application`. The
-Application reference will be added when the first API composition/use-case
-slice actually consumes Application services.
+`Lunar.Api` now references `Lunar.Application` because the API consumes
+Application use cases. The generation endpoint directly consumes
+`GenerateArtifactService`; the content endpoint directly consumes
+`GetArtifactContentService`. The lower-level `CreateWorkflowExecutionService`,
+`StartWorkflowExecutionService`, and `ExecuteWorkflowStepService` are
+registered by the API composition root as dependencies of
+`GenerateArtifactService`, but are not directly orchestrated by the endpoint.
 
 Rules:
 
@@ -179,6 +199,18 @@ Rules:
 - Tests reference only projects they currently exercise. Do not add a
   reference in anticipation of future tests.
 - Avoid cycles and speculative layers.
+
+### Explicit garbage-collector control
+
+Do not call `GC.*` APIs explicitly in Lunar production or test code by
+default (`GC.Collect`, `GC.WaitForPendingFinalizers`,
+`GC.SuppressFinalize`, etc.). Prefer normal .NET object lifetimes,
+`IDisposable`/`IAsyncDisposable`, `using`/`await using`, and framework-owned
+disposal patterns.
+
+If a future type genuinely owns unmanaged resources and requires a
+reviewed finalizer/Dispose pattern, stop and document the requirement
+before introducing an explicit `GC.*` call.
 
 ## Source of Architectural Truth
 

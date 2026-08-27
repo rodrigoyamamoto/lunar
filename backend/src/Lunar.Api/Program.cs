@@ -1,4 +1,12 @@
+using Lunar.Api.Endpoints;
+using Lunar.Application.Artifacts;
+using Lunar.Application.Workflows;
+using Lunar.Core.Artifacts;
+using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
+using Lunar.Core.Workflows;
+using Lunar.Infrastructure.FileSystem;
+using Lunar.Infrastructure.Persistence;
 using Lunar.Infrastructure.Providers.Cloudflare;
 using Microsoft.Extensions.Options;
 
@@ -7,6 +15,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services
     .AddOptions<CloudflareWorkersAiOptions>()
     .Bind(builder.Configuration.GetSection("Cloudflare"));
+
+builder.Services
+    .AddOptions<LocalFileArtifactContentStoreOptions>()
+    .Bind(builder.Configuration.GetSection("ArtifactContentStorage"))
+    .Validate(
+        options => !string.IsNullOrWhiteSpace(options.LocalRootPath),
+        "ArtifactContentStorage:LocalRootPath must be configured.")
+    .ValidateOnStart();
 
 builder.Services.AddHttpClient("CloudflareWorkersAi", client =>
 {
@@ -32,8 +48,35 @@ builder.Services.AddTransient<CloudflareWorkersAiClient>(sp =>
 
 builder.Services.AddTransient<ICapabilityExecutor, CloudflareWorkersAiTextToImageExecutor>();
 
+builder.Services.AddSingleton<IAssetRepository, InMemoryAssetRepository>();
+builder.Services.AddSingleton<IWorkflowDefinitionRepository, InMemoryWorkflowDefinitionRepository>();
+builder.Services.AddSingleton<IWorkflowExecutionRepository, InMemoryWorkflowExecutionRepository>();
+builder.Services.AddSingleton<IArtifactRepository, InMemoryArtifactRepository>();
+
+builder.Services.AddSingleton<IArtifactContentStore>(sp =>
+{
+    var options = sp.GetRequiredService<IOptions<LocalFileArtifactContentStoreOptions>>().Value;
+
+    var rootPath = Path.IsPathRooted(options.LocalRootPath)
+        ? options.LocalRootPath
+        : Path.Combine(builder.Environment.ContentRootPath, options.LocalRootPath);
+
+    return new LocalFileArtifactContentStore(rootPath);
+});
+
+builder.Services.AddTransient<CreateWorkflowExecutionService>();
+builder.Services.AddTransient<StartWorkflowExecutionService>();
+builder.Services.AddTransient<ExecuteWorkflowStepService>();
+builder.Services.AddTransient<GetArtifactContentService>();
+builder.Services.AddTransient<GenerateArtifactService>();
+
 var app = builder.Build();
+
+app.MapGenerationEndpoints();
+app.MapArtifactEndpoints();
 
 app.MapGet("/", () => "Hello World!");
 
 app.Run();
+
+public partial class Program;

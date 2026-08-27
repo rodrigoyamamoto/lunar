@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Lunar.Core\Lunar.Core.csproj" />
+    <ProjectReference Include="..\Lunar.Application\Lunar.Application.csproj" />
     <ProjectReference Include="..\Lunar.Infrastructure\Lunar.Infrastructure.csproj" />
   </ItemGroup>
 

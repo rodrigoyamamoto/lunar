@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -22,6 +23,7 @@
     <ProjectReference Include="..\..\src\Lunar.Core\Lunar.Core.csproj" />
     <ProjectReference Include="..\..\src\Lunar.Application\Lunar.Application.csproj" />
     <ProjectReference Include="..\..\src\Lunar.Infrastructure\Lunar.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Lunar.Api\Lunar.Api.csproj" />
   </ItemGroup>
 
 </Project>
