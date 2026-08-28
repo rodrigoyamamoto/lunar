@@ -9,6 +9,9 @@ using Lunar.Core.Workflows;
 using Lunar.Infrastructure.FileSystem;
 using Lunar.Infrastructure.Persistence;
 using Lunar.Infrastructure.Providers;
+using Lunar.Infrastructure.Providers.Cloudflare;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -123,5 +126,87 @@ public class CompositionRootTests : IClassFixture<LunarApiFactory>
         var resolvedForegroundIsolation = resolver.Resolve(
             ForegroundIsolationWorkflowBootstrap.ForegroundIsolationCapabilityId);
         Assert.IsType<DeterministicCapabilityExecutor>(resolvedForegroundIsolation);
+    }
+}
+
+
+/// <summary>
+/// Tests the real composition-root resolver behavior (without the
+/// DeterministicCapabilityExecutor test double) for foreground-isolation
+/// capability availability under disabled and enabled configurations.
+/// </summary>
+public class CapabilityResolverCompositionTests
+{
+    [Fact]
+    public void DisabledConfig_ForegroundIsolationCapabilityIdIsUnresolved()
+    {
+        using var factory = new RealResolverFactory(disabled: true);
+
+        var resolver = factory.Services.GetRequiredService<ICapabilityExecutorResolver>();
+
+        // Text-to-image mapping remains available even when foreground
+        // isolation is disabled.
+        var resolvedTextToImage = resolver.Resolve(
+            FirstProductLoopWorkflowBootstrap.TextToImageCapabilityId);
+        Assert.NotNull(resolvedTextToImage);
+
+        // Foreground isolation is not mapped when disabled.
+        var resolvedForegroundIsolation = resolver.Resolve(
+            ForegroundIsolationWorkflowBootstrap.ForegroundIsolationCapabilityId);
+        Assert.Null(resolvedForegroundIsolation);
+    }
+
+    [Fact]
+    public void ValidConfig_ForegroundIsolationCapabilityIdResolvesToRealExecutor()
+    {
+        using var factory = new RealResolverFactory(disabled: false);
+
+        var resolver = factory.Services.GetRequiredService<ICapabilityExecutorResolver>();
+
+        // Text-to-image mapping unchanged.
+        var resolvedTextToImage = resolver.Resolve(
+            FirstProductLoopWorkflowBootstrap.TextToImageCapabilityId);
+        Assert.NotNull(resolvedTextToImage);
+
+        // Foreground isolation is mapped to the real executor when enabled.
+        var resolvedForegroundIsolation = resolver.Resolve(
+            ForegroundIsolationWorkflowBootstrap.ForegroundIsolationCapabilityId);
+        Assert.IsType<CloudflareImagesForegroundIsolationExecutor>(resolvedForegroundIsolation);
+    }
+
+
+    private sealed class RealResolverFactory : WebApplicationFactory<Program>
+    {
+        private readonly bool _disabled;
+
+        public RealResolverFactory(bool disabled)
+        {
+            _disabled = disabled;
+        }
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Testing");
+
+            // Synthetic Cloudflare Workers AI config so the real resolver
+            // can construct the text-to-image executor.
+            builder.UseSetting("Cloudflare:BaseAddress", "https://api.cloudflare.com/");
+            builder.UseSetting("Cloudflare:AccountId", "test-account");
+            builder.UseSetting("Cloudflare:ApiToken", "test-token");
+            builder.UseSetting("Cloudflare:RequestTimeout", "00:01:00");
+            builder.UseSetting("Cloudflare:TextToImageModelId", "@cf/black-forest-labs/flux-1-schnell");
+            builder.UseSetting("Cloudflare:TextToImageSteps", "4");
+
+            if (_disabled)
+            {
+                builder.UseSetting("CloudflareForegroundIsolation:Endpoint", "");
+                builder.UseSetting("CloudflareForegroundIsolation:ServiceToken", "");
+            }
+            else
+            {
+                builder.UseSetting("CloudflareForegroundIsolation:Endpoint", "https://test-worker.example.com/");
+                builder.UseSetting("CloudflareForegroundIsolation:ServiceToken", "test-token");
+            }
+        }
     }
 }

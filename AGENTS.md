@@ -14,7 +14,7 @@ current task, then expand the survey if this guide is stale or incomplete.
 - Current asset-generation-gallery working-tree validation: 725 tests, 0 warnings
 - Current controlled-observability-foundation working-tree validation: 764 tests, 0 warnings
 - Current generation-input-provenance working-tree validation: 806 tests, 0 warnings
-- Current foreground-isolation working-tree validation: 905 backend tests, 0 warnings; 16 Worker tests
+- Current foreground-isolation working-tree validation: 913 backend tests, 0 warnings; 16 Worker tests
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -108,7 +108,7 @@ Implemented:
 - `RemoveArtifactBackgroundService` Application service for background removal: loads source Artifact and content, validates supported image media types, executes the foreground-isolation workflow, and produces a derived transparent PNG Artifact with direct lineage (`SourceArtifactIds`);
 - `CloudflareImagesForegroundIsolationExecutor` Infrastructure executor: sends raw image bytes to a Lunar-owned Cloudflare Worker adapter, receives transparent PNG, emits provider telemetry (activity, metrics, structured logs);
 - `CloudflareForegroundIsolationClient` Infrastructure HTTP client for the Worker adapter with Bearer token authentication, timeout handling, and PNG response validation;
-- `CloudflareForegroundIsolationOptions` and `CloudflareForegroundIsolationConfiguration` Infrastructure configuration with `ValidateOnStart` strict validation (startup fails if endpoint, service token, or timeout are missing/invalid);
+- `CloudflareForegroundIsolationOptions` and `CloudflareForegroundIsolationConfiguration` Infrastructure configuration with `ValidateOnStart` conditional validation: foreground isolation is optional — both Endpoint and ServiceToken blank means disabled (Lunar starts normally, foreground-isolation CapabilityId unresolved, Remove Background returns 503); partial or fully configured but invalid values fail startup with `OptionsValidationException`; `CloudflareForegroundIsolationConfiguration` is the single authority for the disabled/enabled/valid classification used by both `ValidateOnStart` and the composition root;
 - `POST /api/artifacts/{artifactId}/remove-background` HTTP endpoint for background removal (thin transport, delegates to `RemoveArtifactBackgroundService`, returns `ArtifactTransformationResponse` with lineage);
 - `ArtifactTransformationResponse` API contract including `sourceArtifactIds` lineage;
 - `ArtifactSummaryResponse` extended with `sourceArtifactIds` for gallery lineage display;

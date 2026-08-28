@@ -24,13 +24,9 @@ builder.Services
 builder.Services
     .AddOptions<CloudflareForegroundIsolationOptions>()
     .Bind(builder.Configuration.GetSection("CloudflareForegroundIsolation"))
-    .Validate(options =>
-        !string.IsNullOrWhiteSpace(options.Endpoint)
-        && Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var uri)
-        && uri.Scheme == Uri.UriSchemeHttps
-        && !string.IsNullOrWhiteSpace(options.ServiceToken)
-        && options.RequestTimeout > TimeSpan.Zero,
-        "CloudflareForegroundIsolation:Endpoint (HTTPS absolute URI), ServiceToken, and strictly positive RequestTimeout must be configured.")
+    .Validate(
+        CloudflareForegroundIsolationConfiguration.IsAcceptable,
+        CloudflareForegroundIsolationConfiguration.GetValidationMessage())
     .ValidateOnStart();
 
 builder.Services
@@ -89,6 +85,8 @@ builder.Services.AddTransient<CloudflareForegroundIsolationClient>(sp =>
     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
     var options = sp.GetRequiredService<IOptions<CloudflareForegroundIsolationOptions>>().Value;
 
+    // From() throws if disabled; the client is only resolved when the
+    // composition root has determined the capability is enabled.
     var configuration = CloudflareForegroundIsolationConfiguration.From(options);
 
     var httpClient = httpClientFactory.CreateClient("CloudflareForegroundIsolation");
@@ -103,17 +101,29 @@ builder.Services.AddTransient<CloudflareImagesForegroundIsolationExecutor>();
 builder.Services.AddSingleton<ICapabilityExecutorResolver>(sp =>
 {
     var textToImage = sp.GetRequiredService<CloudflareWorkersAiTextToImageExecutor>();
-    var foregroundIsolation = sp.GetRequiredService<CloudflareImagesForegroundIsolationExecutor>();
 
-    return CapabilityExecutorResolver.Create(new[]
+    var foregroundOptions = sp.GetRequiredService<IOptions<CloudflareForegroundIsolationOptions>>().Value;
+
+    var mappings = new List<KeyValuePair<CapabilityId, ICapabilityExecutor>>
     {
         KeyValuePair.Create(
             FirstProductLoopWorkflowBootstrap.TextToImageCapabilityId,
-            (ICapabilityExecutor)textToImage),
-        KeyValuePair.Create(
+            (ICapabilityExecutor)textToImage)
+    };
+
+    // The foreground-isolation executor is only mapped when the
+    // capability is enabled with valid configuration. When disabled,
+    // the foreground-isolation CapabilityId remains unresolved and
+    // Remove Background fails through CapabilityExecutorNotFound.
+    if (CloudflareForegroundIsolationConfiguration.IsValid(foregroundOptions))
+    {
+        var foregroundIsolation = sp.GetRequiredService<CloudflareImagesForegroundIsolationExecutor>();
+        mappings.Add(KeyValuePair.Create(
             ForegroundIsolationWorkflowBootstrap.ForegroundIsolationCapabilityId,
-            (ICapabilityExecutor)foregroundIsolation)
-    });
+            (ICapabilityExecutor)foregroundIsolation));
+    }
+
+    return CapabilityExecutorResolver.Create(mappings);
 });
 
 builder.Services.AddSingleton<IAssetRepository, InMemoryAssetRepository>();

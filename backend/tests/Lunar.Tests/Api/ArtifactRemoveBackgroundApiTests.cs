@@ -4,6 +4,14 @@ using Lunar.Api.Contracts;
 using Lunar.Core.Artifacts;
 using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
+using Lunar.Core.Workflows;
+using Lunar.Infrastructure.FileSystem;
+using Lunar.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lunar.Tests.Api;
 
@@ -279,5 +287,169 @@ public class ArtifactRemoveBackgroundApiTests : IClassFixture<LunarApiFactory>
         Assert.DoesNotContain("LocalRootPath", allBodies);
         Assert.DoesNotContain("BindingInternalError", allBodies);
         Assert.DoesNotContain("IMAGES_SECRET_DETAIL", allBodies);
+    }
+
+
+    [Fact]
+    public async Task RemoveBackground_WithDisabledForegroundIsolation_Returns503AndCreatesNoDerivedArtifact()
+    {
+        // Use a factory that starts with foreground isolation disabled and
+        // uses the real composition-root resolver (no test-double replacement).
+        // The real resolver will not map the foreground-isolation CapabilityId,
+        // so Remove Background must fail through CapabilityExecutorNotFound.
+        await using var factory = new DisabledForegroundIsolationApiFactory();
+
+        var assetId = await factory.SeedAssetAsync("Disabled Test Asset");
+        var sourceArtifactId = await factory.SeedArtifactAsync(
+            assetId,
+            name: "Source Image",
+            type: ArtifactType.ConceptImage,
+            mediaType: "image/png",
+            content: new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+
+        var client = factory.CreateClient();
+        var response = await client.PostAsync(
+            $"/api/artifacts/{sourceArtifactId.Value}/remove-background",
+            null);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<ApiErrorResponse>();
+        Assert.NotNull(body);
+        Assert.Equal("capability_executor_not_found", body!.Code);
+
+        // No secret/provider detail leakage in the error body.
+        var responseBody = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("test-token", responseBody);
+        Assert.DoesNotContain("Authorization", responseBody);
+        Assert.DoesNotContain("Bearer", responseBody);
+        Assert.DoesNotContain("data/artifacts", responseBody);
+
+        // No derived Artifact created — the gallery should contain only
+        // the source Artifact.
+        var listResponse = await client.GetAsync($"/api/assets/{assetId.Value}/artifacts");
+        listResponse.EnsureSuccessStatusCode();
+
+        var list = await listResponse.Content.ReadFromJsonAsync<List<ArtifactSummaryResponse>>();
+        Assert.NotNull(list);
+        Assert.Single(list!);
+
+        var onlyArtifact = list[0];
+        Assert.Equal(sourceArtifactId.Value, onlyArtifact.ArtifactId);
+        Assert.Empty(onlyArtifact.SourceArtifactIds);
+
+        // Source Artifact remains unchanged.
+        Assert.Equal("Source Image", onlyArtifact.ArtifactName);
+        Assert.Equal("ConceptImage", onlyArtifact.ArtifactType);
+    }
+
+
+    private sealed class DisabledForegroundIsolationApiFactory : WebApplicationFactory<Program>
+    {
+        private readonly string _contentRootPath;
+        private readonly InMemoryAssetRepository _assetRepository = new();
+        private readonly InMemoryArtifactRepository _artifactRepository = new();
+        private readonly InMemoryWorkflowDefinitionRepository _definitionRepository = new();
+        private readonly InMemoryWorkflowExecutionRepository _executionRepository = new();
+        private readonly InMemoryGenerationInputRecordRepository _generationInputRecordRepository = new();
+
+        public DisabledForegroundIsolationApiFactory()
+        {
+            _contentRootPath = Path.Combine(
+                System.IO.Path.GetTempPath(),
+                "lunar-disabled-fg-test-" + Guid.NewGuid().ToString("N"));
+        }
+
+        public async Task<AssetId> SeedAssetAsync(string name = "Test Asset")
+        {
+            var assetId = AssetId.New();
+            var asset = new Asset(assetId, name, AssetType.Character);
+            await _assetRepository.TryAddAsync(asset);
+            return assetId;
+        }
+
+        public async Task<ArtifactId> SeedArtifactAsync(
+            AssetId assetId,
+            string name = "Test Artifact",
+            ArtifactType type = ArtifactType.ConceptImage,
+            string mediaType = "image/jpeg",
+            byte[]? content = null)
+        {
+            var artifactId = ArtifactId.New();
+            var executionId = WorkflowExecutionId.New();
+            var artifact = new Artifact(
+                artifactId,
+                assetId,
+                name,
+                type,
+                Array.Empty<ArtifactId>(),
+                executionId);
+
+            await _artifactRepository.TryAddAsync(artifact);
+
+            var binaryContent = new BinaryArtifactContent(
+                content ?? new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 },
+                mediaType);
+
+            var contentStore = (LocalFileArtifactContentStore)Services.GetRequiredService(typeof(IArtifactContentStore));
+            await contentStore.TryAddAsync(artifactId, binaryContent, CancellationToken.None);
+
+            return artifactId;
+        }
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Testing");
+            builder.UseSetting("SuppressStatusMessages", "true");
+
+            // Foreground isolation explicitly disabled.
+            builder.UseSetting("CloudflareForegroundIsolation:Endpoint", "");
+            builder.UseSetting("CloudflareForegroundIsolation:ServiceToken", "");
+
+            // Synthetic Cloudflare Workers AI config so the real resolver
+            // can construct the text-to-image executor. The foreground-
+            // isolation executor must remain unmapped.
+            builder.UseSetting("Cloudflare:BaseAddress", "https://api.cloudflare.com/");
+            builder.UseSetting("Cloudflare:AccountId", "test-account");
+            builder.UseSetting("Cloudflare:ApiToken", "test-token");
+            builder.UseSetting("Cloudflare:RequestTimeout", "00:01:00");
+            builder.UseSetting("Cloudflare:TextToImageModelId", "@cf/black-forest-labs/flux-1-schnell");
+            builder.UseSetting("Cloudflare:TextToImageSteps", "4");
+
+            builder.ConfigureServices(services =>
+            {
+                // Replace repositories with in-memory instances for test
+                // isolation, but do NOT replace the resolver — the real
+                // composition-root resolver must be used so we can prove
+                // the foreground-isolation CapabilityId is unresolved.
+                services.RemoveAll<IAssetRepository>();
+                services.AddSingleton<IAssetRepository>(_assetRepository);
+
+                services.RemoveAll<IArtifactRepository>();
+                services.AddSingleton<IArtifactRepository>(_artifactRepository);
+
+                services.RemoveAll<IWorkflowDefinitionRepository>();
+                services.AddSingleton<IWorkflowDefinitionRepository>(_definitionRepository);
+
+                services.RemoveAll<IWorkflowExecutionRepository>();
+                services.AddSingleton<IWorkflowExecutionRepository>(_executionRepository);
+
+                services.RemoveAll<IGenerationInputRecordRepository>();
+                services.AddSingleton<IGenerationInputRecordRepository>(_generationInputRecordRepository);
+
+                services.RemoveAll<IArtifactContentStore>();
+                services.AddSingleton<IArtifactContentStore>(_ =>
+                    new LocalFileArtifactContentStore(_contentRootPath, NullLogger<LocalFileArtifactContentStore>.Instance));
+            });
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing && Directory.Exists(_contentRootPath))
+            {
+                Directory.Delete(_contentRootPath, recursive: true);
+            }
+        }
     }
 }

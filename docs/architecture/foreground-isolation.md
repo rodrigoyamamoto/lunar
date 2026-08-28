@@ -125,10 +125,17 @@ ICapabilityExecutorResolver
     → duplicate registrations rejected at startup via Create()
 ```
 
-The text-to-image and foreground-isolation capabilities are mapped to
-their respective Infrastructure executors at composition time via
-`CapabilityExecutorResolver.Create`, which rejects duplicate
-`CapabilityId` mappings deterministically.
+The text-to-image capability is always mapped to its Infrastructure
+executor. The foreground-isolation capability is mapped only when the
+configuration is valid and enabled. When foreground isolation is
+disabled, the foreground-isolation `CapabilityId` is left unresolved,
+and `Remove Background` fails through the existing
+`CapabilityExecutorNotFound` Application error (HTTP `503 Service
+Unavailable`). No provider call occurs while disabled.
+
+`CloudflareForegroundIsolationConfiguration` is the single authority
+for the disabled/enabled/valid classification used by both
+`ValidateOnStart` and the composition root.
 
 ## Provider Edge
 
@@ -191,6 +198,42 @@ service boundary.
 
 ## Configuration
 
+Foreground isolation is an optional provider-backed capability. Lunar
+starts and remains usable when the capability is not configured.
+
+### Configuration states
+
+```text
+DISABLED
+    Endpoint and ServiceToken both blank/whitespace
+    → Lunar.Api starts normally
+    → foreground-isolation CapabilityId is not mapped
+    → Remove Background returns 503 (CapabilityExecutorNotFound)
+
+PARTIALLY CONFIGURED (invalid)
+    Endpoint supplied but ServiceToken blank, or vice versa
+    → startup fails with OptionsValidationException
+
+FULLY CONFIGURED BUT INVALID
+    Endpoint is not an absolute HTTPS URI, or
+    ServiceToken is blank, or
+    RequestTimeout is not strictly positive
+    → startup fails with OptionsValidationException
+
+FULLY CONFIGURED AND VALID
+    Endpoint is an absolute HTTPS URI,
+    ServiceToken is nonblank,
+    RequestTimeout is strictly positive
+    → Lunar.Api starts
+    → foreground-isolation CapabilityId is mapped to the executor
+```
+
+`RequestTimeout` alone never enables the capability. A default positive
+timeout in committed configuration is safe while the capability is
+disabled.
+
+### Disabled configuration
+
 ```json
 {
   "CloudflareForegroundIsolation": {
@@ -202,12 +245,13 @@ service boundary.
 ```
 
 Committed `appsettings.json` truthfully represents "not configured"
-with empty endpoint and token. The configuration is validated at
-startup via `ValidateOnStart()`. The application will not start if:
+with empty endpoint and token. The application starts normally in this
+state. The foreground-isolation executor is not mapped by
+`ICapabilityExecutorResolver`, and `POST /api/artifacts/{artifactId}/remove-background`
+returns `503 Service Unavailable` with a bounded
+`capability_executor_not_found` error.
 
-- Endpoint is missing, not an absolute URI, or not HTTPS;
-- ServiceToken is missing;
-- RequestTimeout is not strictly positive.
+### Enabled configuration
 
 Local development requires User Secrets:
 
@@ -216,6 +260,14 @@ cd backend/src/Lunar.Api
 dotnet user-secrets set "CloudflareForegroundIsolation:Endpoint" "https://your-deployed-worker.example.com/"
 dotnet user-secrets set "CloudflareForegroundIsolation:ServiceToken" "<shared-secret>"
 ```
+
+When enabled, `ValidateOnStart()` enforces:
+
+- Endpoint is an absolute HTTPS URI;
+- ServiceToken is nonblank;
+- RequestTimeout is strictly positive.
+
+The validation message is bounded and does not expose the ServiceToken.
 
 ## Supported Input Media Types
 
