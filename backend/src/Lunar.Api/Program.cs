@@ -9,6 +9,7 @@ using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.FileSystem;
 using Lunar.Infrastructure.Persistence;
+using Lunar.Infrastructure.Providers;
 using Lunar.Infrastructure.Providers.Cloudflare;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,18 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services
     .AddOptions<CloudflareWorkersAiOptions>()
     .Bind(builder.Configuration.GetSection("Cloudflare"));
+
+builder.Services
+    .AddOptions<CloudflareForegroundIsolationOptions>()
+    .Bind(builder.Configuration.GetSection("CloudflareForegroundIsolation"))
+    .Validate(options =>
+        !string.IsNullOrWhiteSpace(options.Endpoint)
+        && Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && !string.IsNullOrWhiteSpace(options.ServiceToken)
+        && options.RequestTimeout > TimeSpan.Zero,
+        "CloudflareForegroundIsolation:Endpoint (HTTPS absolute URI), ServiceToken, and strictly positive RequestTimeout must be configured.")
+    .ValidateOnStart();
 
 builder.Services
     .AddOptions<LocalFileArtifactContentStoreOptions>()
@@ -62,7 +75,46 @@ builder.Services.AddTransient<CloudflareWorkersAiClient>(sp =>
     return new CloudflareWorkersAiClient(httpClient, configuration);
 });
 
-builder.Services.AddTransient<ICapabilityExecutor, CloudflareWorkersAiTextToImageExecutor>();
+builder.Services.AddHttpClient("CloudflareForegroundIsolation", client =>
+{
+    client.Timeout = Timeout.InfiniteTimeSpan;
+})
+.ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+{
+    AllowAutoRedirect = false
+});
+
+builder.Services.AddTransient<CloudflareForegroundIsolationClient>(sp =>
+{
+    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+    var options = sp.GetRequiredService<IOptions<CloudflareForegroundIsolationOptions>>().Value;
+
+    var configuration = CloudflareForegroundIsolationConfiguration.From(options);
+
+    var httpClient = httpClientFactory.CreateClient("CloudflareForegroundIsolation");
+    httpClient.BaseAddress = configuration.Endpoint;
+
+    return new CloudflareForegroundIsolationClient(httpClient, configuration);
+});
+
+builder.Services.AddTransient<CloudflareWorkersAiTextToImageExecutor>();
+builder.Services.AddTransient<CloudflareImagesForegroundIsolationExecutor>();
+
+builder.Services.AddSingleton<ICapabilityExecutorResolver>(sp =>
+{
+    var textToImage = sp.GetRequiredService<CloudflareWorkersAiTextToImageExecutor>();
+    var foregroundIsolation = sp.GetRequiredService<CloudflareImagesForegroundIsolationExecutor>();
+
+    return CapabilityExecutorResolver.Create(new[]
+    {
+        KeyValuePair.Create(
+            FirstProductLoopWorkflowBootstrap.TextToImageCapabilityId,
+            (ICapabilityExecutor)textToImage),
+        KeyValuePair.Create(
+            ForegroundIsolationWorkflowBootstrap.ForegroundIsolationCapabilityId,
+            (ICapabilityExecutor)foregroundIsolation)
+    });
+});
 
 builder.Services.AddSingleton<IAssetRepository, InMemoryAssetRepository>();
 builder.Services.AddSingleton<IWorkflowDefinitionRepository, InMemoryWorkflowDefinitionRepository>();
@@ -97,9 +149,19 @@ builder.Services.AddSingleton(new GenerationWorkflowTarget(
 
 builder.Services.AddTransient<GenerateDefaultArtifactService>();
 
+builder.Services.AddSingleton(new ForegroundIsolationWorkflowTarget(
+    ForegroundIsolationWorkflowBootstrap.ForegroundIsolationWorkflowDefinitionId,
+    ForegroundIsolationWorkflowBootstrap.WorkflowVersion,
+    ForegroundIsolationWorkflowBootstrap.StepPosition));
+
+builder.Services.AddTransient<RemoveArtifactBackgroundService>();
+
 var app = builder.Build();
 
 await FirstProductLoopWorkflowBootstrap.EnsureWorkflowExistsAsync(
+    app.Services.GetRequiredService<IWorkflowDefinitionRepository>());
+
+await ForegroundIsolationWorkflowBootstrap.EnsureWorkflowExistsAsync(
     app.Services.GetRequiredService<IWorkflowDefinitionRepository>());
 
 app.MapAssetEndpoints();

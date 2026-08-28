@@ -14,6 +14,7 @@ current task, then expand the survey if this guide is stale or incomplete.
 - Current asset-generation-gallery working-tree validation: 725 tests, 0 warnings
 - Current controlled-observability-foundation working-tree validation: 764 tests, 0 warnings
 - Current generation-input-provenance working-tree validation: 806 tests, 0 warnings
+- Current foreground-isolation working-tree validation: 905 backend tests, 0 warnings; 16 Worker tests
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -101,15 +102,26 @@ Implemented:
 - Application service tests;
 - repository and project boundaries;
 - controlled observability foundation: `ApplicationTelemetry` and `InfrastructureTelemetry` static classes owning `ActivitySource` and `Meter` instances; structured `ILogger<T>` logs with `TraceId`/`SpanId` correlation via activity scope; bounded metric tags (outcome, failure stage, failure kind, provider, model); Cloudflare `HttpClient` framework logging noise reduction; prompt privacy (length only, never content); failure stage classification (`FailureStageClassifier`); telemetry tests covering structured logs, activities, metrics, cancellation, unexpected exceptions, and prompt privacy.
+- capability-to-executor routing: `ICapabilityExecutorResolver` Core port resolves executors by `CapabilityId`; `CapabilityExecutorResolver` Infrastructure implementation uses a deterministic dictionary built via `Create()` which rejects duplicate `CapabilityId` registrations at construction time; `ExecuteWorkflowStepService` resolves per step and returns `CapabilityExecutorNotFound` when no executor is configured; the composition root maps text-to-image and foreground-isolation capabilities to their respective executors;
+- `ImageArtifactInput` Core typed capability input for image-transformation operations carrying resolved `BinaryArtifactContent` (image bytes and media type only — no Lunar Artifact identity);
+- `ForegroundIsolationWorkflowBootstrap` API runtime bootstrap for the built-in foreground-isolation workflow (stable UUID v7 identities, compatibility-checked);
+- `RemoveArtifactBackgroundService` Application service for background removal: loads source Artifact and content, validates supported image media types, executes the foreground-isolation workflow, and produces a derived transparent PNG Artifact with direct lineage (`SourceArtifactIds`);
+- `CloudflareImagesForegroundIsolationExecutor` Infrastructure executor: sends raw image bytes to a Lunar-owned Cloudflare Worker adapter, receives transparent PNG, emits provider telemetry (activity, metrics, structured logs);
+- `CloudflareForegroundIsolationClient` Infrastructure HTTP client for the Worker adapter with Bearer token authentication, timeout handling, and PNG response validation;
+- `CloudflareForegroundIsolationOptions` and `CloudflareForegroundIsolationConfiguration` Infrastructure configuration with `ValidateOnStart` strict validation (startup fails if endpoint, service token, or timeout are missing/invalid);
+- `POST /api/artifacts/{artifactId}/remove-background` HTTP endpoint for background removal (thin transport, delegates to `RemoveArtifactBackgroundService`, returns `ArtifactTransformationResponse` with lineage);
+- `ArtifactTransformationResponse` API contract including `sourceArtifactIds` lineage;
+- `ArtifactSummaryResponse` extended with `sourceArtifactIds` for gallery lineage display;
+- foreground-isolation frontend: "Remove background" button, checkerboard preview for transparency, lineage "View source" navigation, and transformation status;
+- Cloudflare Worker adapter (`workers/providers/foreground-isolation/`) for Cloudflare Images foreground segmentation with Bearer token authentication.
 
 Still scaffolding or intentionally absent:
 
 - durable metadata persistence, database mappings, and ORM (content storage is now durable via `LocalFileArtifactContentStore`, but Asset/WorkflowDefinition/WorkflowExecution/Artifact metadata remains in-memory);
-- additional provider adapters beyond Cloudflare Workers AI;
-- worker contracts and worker implementations;
+- additional provider adapters beyond the currently implemented Cloudflare Workers AI and Cloudflare Images adapters;
+- worker contracts and worker implementations (the foreground-isolation Cloudflare Worker adapter is implemented; additional provider/Blender workers remain future work);
 - workflow scheduling, retries, and orchestration engine;
-- workflow authoring UI or durable workflow persistence (the built-in text-to-image workflow is runtime bootstrap);
-- capability-to-executor routing (the single Cloudflare executor handles all capabilities);
+- workflow authoring UI or durable workflow persistence (the built-in text-to-image and foreground-isolation workflows are runtime bootstrap);
 - generation input provenance (`GenerationInputRecord` persists the exact text prompt per `WorkflowExecution`; `IGenerationInputRecordRepository` and `InMemoryGenerationInputRecordRepository` provide insert-only Asset-scoped provenance; `GenerateArtifactService` persists provenance after execution create and before execution start/provider call; `ListAssetArtifactsService` composes `AssetArtifactHistoryItem` pairing each `Artifact` with its optional `GenerationInputRecord` via `SourceExecutionId`; `GET /api/assets/{assetId}/artifacts` returns `generationInput` with the exact prompt; frontend shows "Prompt used" and "Reuse prompt" for selected Artifacts; prompt text is excluded from all operational telemetry);
 - reference image / image-to-image generation;
 - observability foundation (OpenTelemetry/collector not yet introduced; controlled diagnostics remain planned);
@@ -145,7 +157,7 @@ backend/
     Lunar.Infrastructure/  Technical implementations
       Persistence/         In-memory asset, artifact, and workflow repositories
       FileSystem/          Local filesystem artifact content store
-      Providers/           Cloudflare Workers AI adapter
+      Providers/           Cloudflare Workers AI adapter, Cloudflare Images foreground isolation adapter, capability executor resolver
     Lunar.Application/     Application-layer orchestration
       Assets/              CreateAssetService, ListAssetArtifactsService
       Workflows/           ExecuteWorkflowService, StartWorkflowExecutionService, CreateWorkflowExecutionService, GenerateArtifactService, GenerateDefaultArtifactService, GenerationWorkflowTarget
@@ -163,7 +175,7 @@ backend/
       Api/                 HTTP integration tests
 
 frontend/                  React/Vite asset generation gallery UI
-workers/                   Future provider, Blender, and contract runtimes
+workers/                   Provider-edge Worker adapters (foreground-isolation), future Blender and contract runtimes
 config/                    Future runtime configuration
 artifacts/                 Generated outputs; contents are Git-ignored
 docs/
@@ -402,7 +414,7 @@ context: `CapabilityId`, `AssetId`, `WorkflowExecutionId`,
 `WorkflowDefinitionId`, `WorkflowDefinitionVersion`, `StepPosition`,
 `Input`) and returns one `CapabilityExecutionOutcome` — either
 `CapabilityExecutionSucceeded` (wrapping a `CapabilityExecutionOutput`
-with `ArtifactName`, `ArtifactType`, `SourceArtifactIds`, `Content`) or
+with `Content` only — name, type, and lineage are Application-owned) or
 `CapabilityExecutionFailed` (wrapping a `CapabilityExecutionFailure`
 with a provider-independent `Kind` and optional `RetryAfter`).
 
@@ -681,9 +693,11 @@ persisted metadata with the in-memory physical content:
   with the exact `WorkflowExecutionId`, `StepPosition`, failure `Kind`,
   and `RetryAfter` — no Artifact is constructed or persisted;
 - on `CapabilityExecutionSucceeded`, creating an `Artifact` with Lunar-owned identity (`ArtifactId.New()`),
-  Asset ownership (`execution.AssetId`), and execution provenance
-  (`execution.Id`) — the executor cannot supply or override
-  `ArtifactId`, `AssetId`, `SourceExecutionId`, or `CreatedAt`;
+  Asset ownership (`execution.AssetId`), execution provenance
+  (`execution.Id`), and Application-owned metadata
+  (`WorkflowStepArtifactContext` passed by the caller — the executor cannot
+  supply or override `ArtifactId`, `AssetId`, `SourceExecutionId`,
+  `ArtifactName`, `ArtifactType`, `SourceArtifactIds`, or `CreatedAt`);
 - persisting physical content through
   `IArtifactContentStore.TryAddAsync` using the new `ArtifactId`
   (returns `ArtifactContentPersistenceFailed` if the insert is

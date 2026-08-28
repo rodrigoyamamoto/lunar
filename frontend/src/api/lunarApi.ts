@@ -1,6 +1,7 @@
 import type {
   ApiErrorResponse,
   ArtifactSummary,
+  ArtifactTransformationResponse,
   CreateAssetRequest,
   CreateAssetResponse,
   GenerationRequest,
@@ -64,4 +65,16 @@ export async function listAssetArtifacts(assetId: string): Promise<ArtifactSumma
   }
 
   return (await response.json()) as ArtifactSummary[]
+}
+
+export async function removeArtifactBackground(artifactId: string): Promise<ArtifactTransformationResponse> {
+  const response = await fetch(`/api/artifacts/${artifactId}/remove-background`, {
+    method: 'POST',
+  })
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response)
+  }
+
+  return (await response.json()) as ArtifactTransformationResponse
 }

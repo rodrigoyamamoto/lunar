@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Lunar.Application.Artifacts;
 using Lunar.Application.Errors;
+using Lunar.Core.Artifacts;
 using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
 using Microsoft.Extensions.Logging;
@@ -69,6 +70,10 @@ public sealed class GenerateDefaultArtifactService
                 _target.Version,
                 _target.StepPosition,
                 input,
+                new WorkflowStepArtifactContext(
+                    "Generated image",
+                    ArtifactType.ConceptImage,
+                    Array.Empty<ArtifactId>()),
                 cancellationToken);
 
             stopwatch.Stop();

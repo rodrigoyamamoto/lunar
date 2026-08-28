@@ -4,6 +4,7 @@ import {
   createAsset,
   generateArtifact,
   listAssetArtifacts,
+  removeArtifactBackground,
   LunarApiError,
 } from './api/lunarApi'
 import { mapErrorToMessage } from './api/errorMapping'
@@ -30,6 +31,8 @@ export default function App() {
   const [selectedArtifact, setSelectedArtifact] = useState<ArtifactSummary | null>(null)
   const [galleryError, setGalleryError] = useState('')
   const [assetId, setAssetId] = useState<string | null>(null)
+  const [removingBackground, setRemovingBackground] = useState(false)
+  const [removeBackgroundError, setRemoveBackgroundError] = useState('')
 
   const assetIdRef = useRef<string | null>(null)
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -153,6 +156,8 @@ export default function App() {
     setArtifacts([])
     setSelectedArtifact(null)
     setGalleryError('')
+    setRemovingBackground(false)
+    setRemoveBackgroundError('')
     assetIdRef.current = null
     setAssetId(null)
   }
@@ -167,7 +172,35 @@ export default function App() {
     setPrompt(promptText)
   }
 
-  const isBusy = uiState === 'creating' || uiState === 'generating'
+  const handleRemoveBackground = async () => {
+    const target = selectedArtifact
+    if (!target || !assetIdRef.current) return
+
+    setRemovingBackground(true)
+    setRemoveBackgroundError('')
+
+    try {
+      await removeArtifactBackground(target.artifactId)
+      await refreshGallery(assetIdRef.current!)
+    } catch (error) {
+      if (error instanceof LunarApiError) {
+        setRemoveBackgroundError(mapErrorToMessage(error))
+      } else {
+        setRemoveBackgroundError('Could not remove background.')
+      }
+    } finally {
+      setRemovingBackground(false)
+    }
+  }
+
+  const handleViewSource = (sourceArtifactId: string) => {
+    const source = artifacts.find((a) => a.artifactId === sourceArtifactId)
+    if (source) {
+      setSelectedArtifact(source)
+    }
+  }
+
+  const isBusy = uiState === 'creating' || uiState === 'generating' || removingBackground
   const hasAsset = assetId !== null
   const canGenerate =
     (!hasAsset ? assetName.trim() !== '' : true) &&
@@ -176,6 +209,7 @@ export default function App() {
   const previewTarget = selectedArtifact
   const previewName = previewTarget?.artifactName ?? generation?.artifactName ?? ''
   const previewUrl = previewTarget?.contentUrl ?? generation?.contentUrl ?? ''
+  const hasSourceLineage = (previewTarget?.sourceArtifactIds?.length ?? 0) > 0
 
   return (
     <div className="lunar-app">
@@ -308,7 +342,7 @@ export default function App() {
           <section className="lunar-preview-section" aria-label="Selected output">
             {previewUrl ? (
               <>
-                <div className="lunar-preview">
+                <div className="lunar-preview lunar-preview-checkerboard">
                   <img
                     src={previewUrl}
                     alt={previewName}
@@ -327,28 +361,64 @@ export default function App() {
                   </button>
                 </div>
                 {previewTarget && (
-                  <div className="lunar-prompt-provenance">
-                    <h4>Prompt used</h4>
-                    {previewTarget.generationInput ? (
-                      <>
-                        <p className="lunar-prompt-text">
-                          {previewTarget.generationInput.prompt}
+                  <>
+                    <div className="lunar-prompt-provenance">
+                      <h4>Prompt used</h4>
+                      {previewTarget.generationInput ? (
+                        <>
+                          <p className="lunar-prompt-text">
+                            {previewTarget.generationInput.prompt}
+                          </p>
+                          <button
+                            type="button"
+                            className="lunar-button-secondary"
+                            onClick={handleReusePrompt}
+                            disabled={isBusy}
+                          >
+                            Reuse prompt
+                          </button>
+                        </>
+                      ) : (
+                        <p className="lunar-prompt-unavailable">
+                          Prompt unavailable for this artifact.
                         </p>
-                        <button
-                          type="button"
-                          className="lunar-button-secondary"
-                          onClick={handleReusePrompt}
-                          disabled={isBusy}
-                        >
-                          Reuse prompt
-                        </button>
-                      </>
-                    ) : (
-                      <p className="lunar-prompt-unavailable">
-                        Prompt unavailable for this artifact.
-                      </p>
+                      )}
+                    </div>
+                    {hasSourceLineage && (
+                      <div className="lunar-lineage">
+                        <p className="lunar-lineage-text">
+                          Derived from {previewTarget.sourceArtifactIds.length} source artifact{previewTarget.sourceArtifactIds.length > 1 ? 's' : ''}
+                        </p>
+                        {previewTarget.sourceArtifactIds.map((sourceId) => (
+                          <button
+                            key={sourceId}
+                            type="button"
+                            className="lunar-button-secondary lunar-lineage-source"
+                            onClick={() => handleViewSource(sourceId)}
+                            disabled={isBusy}
+                          >
+                            View source
+                          </button>
+                        ))}
+                      </div>
                     )}
-                  </div>
+                    <div className="lunar-remove-background">
+                      <button
+                        type="button"
+                        className="lunar-button-secondary"
+                        onClick={handleRemoveBackground}
+                        disabled={isBusy}
+                      >
+                        {removingBackground ? 'Removing…' : 'Remove background'}
+                      </button>
+                      {removingBackground && (
+                        <span className="lunar-status-text">Removing background…</span>
+                      )}
+                      {removeBackgroundError && (
+                        <p className="lunar-error-message">{removeBackgroundError}</p>
+                      )}
+                    </div>
+                  </>
                 )}
               </>
             ) : (

@@ -9,9 +9,15 @@ using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.Providers.Cloudflare;
 using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
 
 namespace Lunar.Tests.Infrastructure.Providers.Cloudflare;
 
+// Shares the static InfrastructureTelemetry Meter/ActivitySource with the
+// telemetry suites. Placing this class in the Telemetry collection prevents
+// parallel execution with telemetry tests whose MeterListener would otherwise
+// observe provider measurements emitted by these executor invocations.
+[Collection("Telemetry")]
 public class CloudflareWorkersAiTextToImageExecutorTests
 {
     private const string TestAccountId = "test-account";
@@ -168,9 +174,13 @@ public class CloudflareWorkersAiTextToImageExecutorTests
         var outcome = await CreateExecutor(handler).ExecuteAsync(CreateRequest("test prompt"));
 
         var succeeded = Assert.IsType<CapabilityExecutionSucceeded>(outcome);
-        Assert.Equal("Generated image", succeeded.Output.ArtifactName);
-        Assert.Equal(ArtifactType.ConceptImage, succeeded.Output.ArtifactType);
-        Assert.Empty(succeeded.Output.SourceArtifactIds);
+        // After the metadata refactor, CapabilityExecutionOutput carries only
+        // content. Name, type, and lineage are owned by the Application
+        // workflow execution context.
+        var properties = succeeded.Output.GetType().GetProperties();
+        Assert.DoesNotContain(properties, p => p.Name == "ArtifactName");
+        Assert.DoesNotContain(properties, p => p.Name == "ArtifactType");
+        Assert.DoesNotContain(properties, p => p.Name == "SourceArtifactIds");
     }
 
 

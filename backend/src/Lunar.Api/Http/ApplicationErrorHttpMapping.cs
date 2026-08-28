@@ -35,6 +35,22 @@ public static class ApplicationErrorHttpMapping
                     Message = error.Message
                 }),
 
+            CapabilityExecutorNotFound => new HttpErrorResult(
+                StatusCodes.Status503ServiceUnavailable,
+                new Contracts.ApiErrorResponse
+                {
+                    Code = "capability_executor_not_found",
+                    Message = error.Message
+                }),
+
+            UnsupportedArtifactContent => new HttpErrorResult(
+                StatusCodes.Status422UnprocessableEntity,
+                new Contracts.ApiErrorResponse
+                {
+                    Code = "unsupported_artifact_content",
+                    Message = error.Message
+                }),
+
             WorkflowExecutionNotFound => new HttpErrorResult(
                 StatusCodes.Status404NotFound,
                 new Contracts.ApiErrorResponse

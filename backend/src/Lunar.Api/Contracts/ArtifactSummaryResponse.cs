@@ -15,4 +15,6 @@ public sealed class ArtifactSummaryResponse
     public required string ContentUrl { get; init; }
 
     public GenerationInputResponse? GenerationInput { get; init; }
+
+    public required IReadOnlyList<Guid> SourceArtifactIds { get; init; }
 }

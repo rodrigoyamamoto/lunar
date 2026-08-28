@@ -9,6 +9,10 @@ public sealed class DeterministicCapabilityExecutor : ICapabilityExecutor
         new(new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46 },
             "image/jpeg");
 
+    private static readonly BinaryArtifactContent TransformContent =
+        new(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01 },
+            "image/png");
+
     private readonly List<CapabilityExecutionRequest> _capturedRequests = new();
 
     public int CallCount { get; private set; }
@@ -16,10 +20,6 @@ public sealed class DeterministicCapabilityExecutor : ICapabilityExecutor
     public IReadOnlyList<CapabilityExecutionRequest> CapturedRequests => _capturedRequests;
 
     public ArtifactContent Content { get; set; } = DefaultContent;
-
-    public string ArtifactName { get; set; } = "test-output.jpg";
-
-    public ArtifactType ArtifactType { get; set; } = ArtifactType.ConceptImage;
 
     public CapabilityExecutionFailure? Failure { get; set; }
 
@@ -39,14 +39,18 @@ public sealed class DeterministicCapabilityExecutor : ICapabilityExecutor
                 new CapabilityExecutionFailed(failure));
         }
 
-        var output = new CapabilityExecutionOutput(
-            ArtifactName,
-            ArtifactType,
-            Array.Empty<ArtifactId>(),
-            Content);
+        if (request.Input is ImageArtifactInput)
+        {
+            var output = new CapabilityExecutionOutput(TransformContent);
+
+            return Task.FromResult<CapabilityExecutionOutcome>(
+                new CapabilityExecutionSucceeded(output));
+        }
+
+        var defaultOutput = new CapabilityExecutionOutput(Content);
 
         return Task.FromResult<CapabilityExecutionOutcome>(
-            new CapabilityExecutionSucceeded(output));
+            new CapabilityExecutionSucceeded(defaultOutput));
     }
 
 
@@ -56,7 +60,5 @@ public sealed class DeterministicCapabilityExecutor : ICapabilityExecutor
         _capturedRequests.Clear();
         Failure = null;
         Content = DefaultContent;
-        ArtifactName = "test-output.jpg";
-        ArtifactType = ArtifactType.ConceptImage;
     }
 }

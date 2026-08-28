@@ -7,7 +7,6 @@ namespace Lunar.Infrastructure.Providers.Cloudflare;
 
 public sealed class CloudflareWorkersAiTextToImageExecutor : ICapabilityExecutor
 {
-    private const string DefaultArtifactName = "Generated image";
     private const string OutputMediaType = "image/jpeg";
     private const string ProviderName = InfrastructureTelemetry.ProviderCloudflareWorkersAi;
 
@@ -103,9 +102,6 @@ public sealed class CloudflareWorkersAiTextToImageExecutor : ICapabilityExecutor
 
                         return new CapabilityExecutionSucceeded(
                             new CapabilityExecutionOutput(
-                                DefaultArtifactName,
-                                ArtifactType.ConceptImage,
-                                [],
                                 new BinaryArtifactContent(succeeded.ImageBytes, OutputMediaType)));
                     }
 

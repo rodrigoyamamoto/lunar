@@ -86,9 +86,11 @@ public class ProviderTelemetryTests
         await executor.ExecuteAsync(CreateRequest("test prompt"));
 
         var providerActivity = listener.Activities.LastOrDefault(
-            a => a.OperationName == InfrastructureTelemetry.ProviderRequestActivityName);
+            a => a.OperationName == InfrastructureTelemetry.ProviderRequestActivityName
+                 && a.GetTagItem(InfrastructureTelemetry.ProviderNameTag)?.ToString() == InfrastructureTelemetry.ProviderCloudflareWorkersAi
+                 && a.GetTagItem(InfrastructureTelemetry.ProviderModelTag)?.ToString() == TestModelId
+                 && a.Status == ActivityStatusCode.Ok);
         Assert.NotNull(providerActivity);
-        Assert.Equal(ActivityStatusCode.Ok, providerActivity!.Status);
         Assert.Equal(InfrastructureTelemetry.ProviderCloudflareWorkersAi,
             providerActivity.GetTagItem(InfrastructureTelemetry.ProviderNameTag)?.ToString());
         Assert.Equal(TestModelId,
@@ -119,22 +121,43 @@ public class ProviderTelemetryTests
 
         var requests = meterListener.GetCounterValues("lunar.provider.requests");
         Assert.NotEmpty(requests);
-        Assert.Equal(1L, (long)requests.Sum(r => r.Value));
+
+        var workerAiRequests = requests.Where(r =>
+            r.Tags.TryGetValue(InfrastructureTelemetry.ProviderNameMetricTag, out var provider) &&
+            provider?.ToString() == InfrastructureTelemetry.ProviderCloudflareWorkersAi &&
+            r.Tags.TryGetValue(InfrastructureTelemetry.ProviderModelMetricTag, out var model) &&
+            model?.ToString() == TestModelId).ToList();
+        Assert.NotEmpty(workerAiRequests);
+        Assert.Equal(1L, (long)workerAiRequests.Sum(r => r.Value));
 
         var durations = meterListener.GetHistogramValues("lunar.provider.request.duration");
         Assert.NotEmpty(durations);
 
+        var workerAiDurations = durations.Where(r =>
+            r.Tags.TryGetValue(InfrastructureTelemetry.ProviderNameMetricTag, out var dProvider) &&
+            dProvider?.ToString() == InfrastructureTelemetry.ProviderCloudflareWorkersAi &&
+            r.Tags.TryGetValue(InfrastructureTelemetry.ProviderModelMetricTag, out var dModel) &&
+            dModel?.ToString() == TestModelId).ToList();
+        Assert.NotEmpty(workerAiDurations);
+
         var outputSizes = meterListener.GetHistogramValues("lunar.provider.output.size");
         Assert.NotEmpty(outputSizes);
-        Assert.True(outputSizes.All(r => r.Value > 0));
+
+        var workerAiOutputSizes = outputSizes.Where(r =>
+            r.Tags.TryGetValue(InfrastructureTelemetry.ProviderNameMetricTag, out var sProvider) &&
+            sProvider?.ToString() == InfrastructureTelemetry.ProviderCloudflareWorkersAi &&
+            r.Tags.TryGetValue(InfrastructureTelemetry.ProviderModelMetricTag, out var sModel) &&
+            sModel?.ToString() == TestModelId).ToList();
+        Assert.NotEmpty(workerAiOutputSizes);
+        Assert.True(workerAiOutputSizes.All(r => r.Value > 0));
 
         // Verify bounded tags
-        foreach (var record in requests)
+        foreach (var record in workerAiRequests)
         {
-            Assert.True(record.Tags.TryGetValue(InfrastructureTelemetry.ProviderNameMetricTag, out var provider));
-            Assert.Equal(InfrastructureTelemetry.ProviderCloudflareWorkersAi, provider?.ToString());
-            Assert.True(record.Tags.TryGetValue(InfrastructureTelemetry.ProviderModelMetricTag, out var model));
-            Assert.Equal(TestModelId, model?.ToString());
+            Assert.True(record.Tags.TryGetValue(InfrastructureTelemetry.ProviderNameMetricTag, out var boundedProvider));
+            Assert.Equal(InfrastructureTelemetry.ProviderCloudflareWorkersAi, boundedProvider?.ToString());
+            Assert.True(record.Tags.TryGetValue(InfrastructureTelemetry.ProviderModelMetricTag, out var boundedModel));
+            Assert.Equal(TestModelId, boundedModel?.ToString());
         }
     }
 
@@ -184,7 +207,10 @@ public class ProviderTelemetryTests
         Assert.True(outcome is CapabilityExecutionFailed);
 
         var providerActivity = listener.Activities.LastOrDefault(
-            a => a.OperationName == InfrastructureTelemetry.ProviderRequestActivityName);
+            a => a.OperationName == InfrastructureTelemetry.ProviderRequestActivityName
+                 && a.GetTagItem(InfrastructureTelemetry.ProviderNameTag)?.ToString() == InfrastructureTelemetry.ProviderCloudflareWorkersAi
+                 && a.GetTagItem(InfrastructureTelemetry.ProviderModelTag)?.ToString() == TestModelId
+                 && a.Status == ActivityStatusCode.Error);
         Assert.NotNull(providerActivity);
         Assert.Equal(ActivityStatusCode.Error, providerActivity!.Status);
         Assert.Equal(InfrastructureTelemetry.OutcomeFailure,
@@ -221,8 +247,20 @@ public class ProviderTelemetryTests
             outcome?.ToString() == InfrastructureTelemetry.OutcomeFailure);
         Assert.NotEmpty(failureDurations);
 
-        // No output size metric on failure
-        var outputSizes = meterListener.GetHistogramValues("lunar.provider.output.size");
+        // No output size metric for this failed Cloudflare Workers AI request.
+        // Scope the assertion to the provider/model under test so unrelated
+        // provider measurements cannot contaminate this test, and so the
+        // assertion cannot pass vacuously if a broken Workers AI executor
+        // ever emitted an output-size measurement on failure.
+        var outputSizes = meterListener.GetHistogramValues("lunar.provider.output.size")
+            .Where(r => r.Tags.TryGetValue(
+                InfrastructureTelemetry.ProviderNameMetricTag,
+                out var provider)
+                && provider?.ToString() == InfrastructureTelemetry.ProviderCloudflareWorkersAi
+                && r.Tags.TryGetValue(
+                InfrastructureTelemetry.ProviderModelMetricTag,
+                out var model)
+                && model?.ToString() == TestModelId);
         Assert.Empty(outputSizes);
     }
 
@@ -298,11 +336,10 @@ public class ProviderTelemetryTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             executor.ExecuteAsync(CreateRequest("test prompt")));
 
-        // The provider activity must exist and be Error
         var providerActivity = listener.Activities.LastOrDefault(
-            a => a.OperationName == InfrastructureTelemetry.ProviderRequestActivityName);
+            a => a.OperationName == InfrastructureTelemetry.ProviderRequestActivityName
+                 && a.Status == ActivityStatusCode.Error);
         Assert.NotNull(providerActivity);
-        Assert.Equal(ActivityStatusCode.Error, providerActivity!.Status);
 
         // exception.type tag must be present (controlled)
         var exceptionType = providerActivity.GetTagItem(InfrastructureTelemetry.ExceptionTypeTag)?.ToString();

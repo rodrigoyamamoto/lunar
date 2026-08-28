@@ -132,7 +132,7 @@ public class GenerateArtifactServiceTests
                 SharedDefinitionId,
                 1,
                 1,
-                SharedInput));
+                SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public class GenerateArtifactServiceTests
                 new WorkflowDefinitionId(Guid.Empty),
                 1,
                 1,
-                SharedInput));
+                SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class GenerateArtifactServiceTests
                 SharedDefinitionId,
                 0,
                 1,
-                SharedInput));
+                SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public class GenerateArtifactServiceTests
                 SharedDefinitionId,
                 1,
                 0,
-                SharedInput));
+                SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public class GenerateArtifactServiceTests
                 SharedDefinitionId,
                 1,
                 1,
-                null!));
+                null!, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
     }
 
 
@@ -202,7 +202,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowDefinitionNotFound>(result.Error);
@@ -227,7 +227,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             99,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowStepNotFound>(result.Error);
@@ -253,7 +253,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             99,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.Equal(0, executionRepository.TryAddCallCount);
         Assert.Equal(0, executionRepository.TryUpdateCallCount);
@@ -276,7 +276,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             99,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.Equal(0, executor.CallCount);
     }
@@ -299,7 +299,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         Assert.IsType<AssetNotFound>(result.Error);
@@ -328,7 +328,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         Assert.IsType<WorkflowExecutionConcurrencyConflict>(result.Error);
@@ -357,7 +357,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
@@ -385,7 +385,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         Assert.NotEqual(Guid.Empty, result.Value!.WorkflowExecutionId.Value);
@@ -418,7 +418,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
 
@@ -454,7 +454,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1, executor.CallCount);
@@ -482,7 +482,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.Equal(1, executor.LastRequest!.StepPosition);
     }
@@ -509,7 +509,8 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            input);
+            input,
+            new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.Same(input, executor.LastRequest!.Input);
     }
@@ -538,7 +539,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(executionRepository.LastAddedExecutionId, result.Value!.WorkflowExecutionId);
@@ -565,7 +566,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value!.ProducedArtifact);
@@ -595,7 +596,7 @@ public class GenerateArtifactServiceTests
                 SharedDefinitionId,
                 1,
                 1,
-                SharedInput,
+                SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()),
                 cts.Token));
     }
 
@@ -622,7 +623,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
 
@@ -658,7 +659,8 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            promptWithWhitespace);
+            promptWithWhitespace,
+            new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         var records = await inputRepository.GetByAssetIdAsync(SharedAssetId);
         Assert.Single(records);
@@ -688,7 +690,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         Assert.IsType<GenerationInputPersistenceFailed>(result.Error);
@@ -717,7 +719,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.Equal(0, executor.CallCount);
     }
@@ -743,7 +745,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             99,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.Equal(0, inputRepository.TryAddCallCount);
     }
@@ -772,7 +774,7 @@ public class GenerateArtifactServiceTests
             SharedDefinitionId,
             1,
             1,
-            SharedInput);
+            SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
 
@@ -809,7 +811,7 @@ public class GenerateArtifactServiceTests
 
         var executeService = new ExecuteWorkflowStepService(
             executionRepository, definitionRepository,
-            artifactRepository, executor, contentStore,
+            artifactRepository, new SingleCapabilityExecutorResolver(executor), contentStore,
             NullLogger<ExecuteWorkflowStepService>.Instance);
 
         return new GenerateArtifactService(
@@ -824,7 +826,7 @@ public class GenerateArtifactServiceTests
             new InMemoryWorkflowExecutionRepository(),
             new InMemoryWorkflowDefinitionRepository(),
             new InMemoryArtifactRepository(),
-            new TrackingCapabilityExecutor(),
+            new SingleCapabilityExecutorResolver(new TrackingCapabilityExecutor()),
             new InMemoryArtifactContentStore(),
             NullLogger<ExecuteWorkflowStepService>.Instance);
     }
@@ -914,10 +916,7 @@ public class GenerateArtifactServiceTests
             }
 
             var output = new CapabilityExecutionOutput(
-                "output.jpg",
-                ArtifactType.ConceptImage,
-                Array.Empty<ArtifactId>(),
-                SharedContent);
+            SharedContent);
 
             return Task.FromResult<CapabilityExecutionOutcome>(
                 new CapabilityExecutionSucceeded(output));

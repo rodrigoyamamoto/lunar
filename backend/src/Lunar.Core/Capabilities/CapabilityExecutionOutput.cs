@@ -1,35 +1,26 @@
-using System.Collections.ObjectModel;
 using Lunar.Core.Artifacts;
 
 namespace Lunar.Core.Capabilities;
 
+/// <summary>
+/// Core physical output produced by a capability executor. Contains
+/// only the content that the capability physically produced.
+///
+/// Lunar Artifact business metadata — name, type, and direct lineage
+/// (<see cref="Artifact.SourceArtifactIds"/>) — is owned by the
+/// Application/workflow execution context, not by the provider
+/// executor. This prevents a provider from altering Lunar business
+/// classification or provenance.
+/// </summary>
 public sealed class CapabilityExecutionOutput
 {
-    private readonly ReadOnlyCollection<ArtifactId> _sourceArtifactIds;
-
-    public string ArtifactName { get; }
-
-    public ArtifactType ArtifactType { get; }
-
-    public IReadOnlyList<ArtifactId> SourceArtifactIds => _sourceArtifactIds;
-
     public ArtifactContent Content { get; }
 
 
-    public CapabilityExecutionOutput(
-        string artifactName,
-        ArtifactType artifactType,
-        IEnumerable<ArtifactId> sourceArtifactIds,
-        ArtifactContent content)
+    public CapabilityExecutionOutput(ArtifactContent content)
     {
-        ArgumentNullException.ThrowIfNull(artifactName);
-        ArgumentNullException.ThrowIfNull(sourceArtifactIds);
         ArgumentNullException.ThrowIfNull(content);
 
-        _sourceArtifactIds = sourceArtifactIds.ToList().AsReadOnly();
-
-        ArtifactName = artifactName;
-        ArtifactType = artifactType;
         Content = content;
     }
 }

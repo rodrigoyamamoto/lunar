@@ -22,6 +22,8 @@ public static class FailureStageClassifier
             WorkflowDefinitionNotFound => (ApplicationTelemetry.StageWorkflowPrevalidation, null),
             WorkflowStepNotFound => (ApplicationTelemetry.StageWorkflowPrevalidation, null),
 
+            CapabilityExecutorNotFound => (ApplicationTelemetry.StageCapabilityExecution, null),
+
             WorkflowExecutionPersistenceFailed => (ApplicationTelemetry.StageWorkflowExecutionCreation, null),
 
             GenerationInputPersistenceFailed => (ApplicationTelemetry.StageGenerationInputPersistence, null),

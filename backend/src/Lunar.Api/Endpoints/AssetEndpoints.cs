@@ -97,7 +97,10 @@ public static class AssetEndpoints
                         WorkflowExecutionId = input.WorkflowExecutionId.Value,
                         Prompt = input.Prompt.Prompt
                     }
-                    : null
+                    : null,
+                SourceArtifactIds = item.Artifact.SourceArtifactIds
+                    .Select(id => id.Value)
+                    .ToList()
             })
             .ToList();
 

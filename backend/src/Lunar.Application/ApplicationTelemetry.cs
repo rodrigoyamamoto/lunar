@@ -50,6 +50,7 @@ public static class ApplicationTelemetry
 
     public const string AssetIdTag = "lunar.asset.id";
     public const string ArtifactIdTag = "lunar.artifact.id";
+    public const string DerivedArtifactIdTag = "lunar.artifact.derived_id";
     public const string WorkflowExecutionIdTag = "lunar.workflow.execution.id";
     public const string WorkflowDefinitionIdTag = "lunar.workflow.definition.id";
     public const string WorkflowDefinitionVersionTag = "lunar.workflow.definition.version";

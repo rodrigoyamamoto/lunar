@@ -1,5 +1,8 @@
+using Lunar.Api.Contracts;
 using Lunar.Api.Http;
+using Lunar.Application;
 using Lunar.Application.Artifacts;
+using Lunar.Application.Assets;
 using Lunar.Application.Errors;
 using Lunar.Core.Artifacts;
 
@@ -12,6 +15,7 @@ public static class ArtifactEndpoints
         var group = app.MapGroup("/api/artifacts");
 
         group.MapGet("/{artifactId:guid}/content", GetArtifactContentAsync);
+        group.MapPost("/{artifactId:guid}/remove-background", RemoveBackgroundAsync);
 
         return app;
     }
@@ -53,6 +57,68 @@ public static class ArtifactEndpoints
         return Results.File(
             binaryContent.Data.ToArray(),
             contentType: binaryContent.MediaType);
+    }
+
+
+    private static async Task<IResult> RemoveBackgroundAsync(
+        Guid artifactId,
+        RemoveArtifactBackgroundService removeArtifactBackgroundService,
+        CancellationToken cancellationToken)
+    {
+        if (artifactId == Guid.Empty)
+        {
+            return Results.Json(
+                new Contracts.ApiErrorResponse
+                {
+                    Code = "invalid_artifact_id",
+                    Message = "ArtifactId must be a valid non-empty UUID."
+                },
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        Result<GeneratedArtifact> result;
+
+        try
+        {
+            result = await removeArtifactBackgroundService.RemoveBackgroundAsync(
+                new ArtifactId(artifactId),
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+
+        if (result.IsFailure)
+        {
+            return MapError(result.Error!);
+        }
+
+        var generated = result.Value!;
+        var produced = generated.ProducedArtifact;
+        var artifact = produced.Artifact;
+
+        if (produced.Content is not BinaryArtifactContent binaryContent)
+        {
+            throw new InvalidOperationException(
+                "Background removal requires binary artifact content.");
+        }
+
+        var response = new ArtifactTransformationResponse
+        {
+            WorkflowExecutionId = generated.WorkflowExecutionId.Value,
+            ArtifactId = artifact.Id.Value,
+            AssetId = artifact.AssetId.Value,
+            ArtifactName = artifact.Name,
+            ArtifactType = artifact.Type.ToString(),
+            MediaType = binaryContent.MediaType,
+            ContentUrl = $"/api/artifacts/{artifact.Id.Value}/content",
+            SourceArtifactIds = artifact.SourceArtifactIds
+                .Select(id => id.Value)
+                .ToList()
+        };
+
+        return Results.Created(response.ContentUrl, response);
     }
 
 

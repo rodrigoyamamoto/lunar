@@ -37,7 +37,7 @@ public class GenerationApiTests : IClassFixture<LunarApiFactory>
         Assert.Equal(assetId.Value, body!.AssetId);
         Assert.NotEqual(Guid.Empty, body.ArtifactId);
         Assert.NotEqual(Guid.Empty, body.WorkflowExecutionId);
-        Assert.Equal("test-output.jpg", body.ArtifactName);
+        Assert.Equal("Generated image", body.ArtifactName);
         Assert.Equal("ConceptImage", body.ArtifactType);
         Assert.Equal("image/jpeg", body.MediaType);
         Assert.Equal($"/api/artifacts/{body.ArtifactId}/content", body.ContentUrl);

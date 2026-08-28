@@ -73,11 +73,11 @@ public class DurableArtifactContentRoundTripTests : IDisposable
             executionRepository,
             definitionRepository,
             artifactRepository,
-            executor,
+            new SingleCapabilityExecutorResolver(executor),
             contentStore,
             NullLogger<ExecuteWorkflowStepService>.Instance);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, new TextPromptInput("test prompt"));
+        var result = await service.ExecuteAsync(execution.Id, 1, new TextPromptInput("test prompt"), new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         var artifactId = result.Value!.Artifact.Id;
@@ -127,11 +127,11 @@ public class DurableArtifactContentRoundTripTests : IDisposable
             executionRepository,
             definitionRepository,
             artifactRepository,
-            executor,
+            new SingleCapabilityExecutorResolver(executor),
             contentStore,
             NullLogger<ExecuteWorkflowStepService>.Instance);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, new TextPromptInput("test prompt"));
+        var result = await service.ExecuteAsync(execution.Id, 1, new TextPromptInput("test prompt"), new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         Assert.IsType<ArtifactPersistenceFailed>(result.Error);
@@ -180,12 +180,12 @@ public class DurableArtifactContentRoundTripTests : IDisposable
             executionRepository,
             definitionRepository,
             artifactRepository,
-            executor,
+            new SingleCapabilityExecutorResolver(executor),
             contentStore,
             NullLogger<ExecuteWorkflowStepService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ExecuteAsync(execution.Id, 1, new TextPromptInput("test prompt")));
+            service.ExecuteAsync(execution.Id, 1, new TextPromptInput("test prompt"), new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
 
         var thrownArtifactId = artifactRepository.CapturedArtifact!.Id;
 
@@ -213,10 +213,7 @@ public class DurableArtifactContentRoundTripTests : IDisposable
 
             return Task.FromResult<CapabilityExecutionOutcome>(
                 new CapabilityExecutionSucceeded(new CapabilityExecutionOutput(
-                    "test-output.jpg",
-                    ArtifactType.ConceptImage,
-                    Array.Empty<ArtifactId>(),
-                    _content)));
+            _content)));
         }
     }
 

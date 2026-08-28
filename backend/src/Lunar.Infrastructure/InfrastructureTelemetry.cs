@@ -29,6 +29,7 @@ public static class InfrastructureTelemetry
 
     public const string ProviderNameTag = "lunar.provider.name";
     public const string ProviderModelTag = "lunar.provider.model";
+    public const string ProviderOperationTag = "lunar.provider.operation";
     public const string ProviderHttpStatusTag = "lunar.provider.http_status";
     public const string ArtifactIdTag = "lunar.artifact.id";
     public const string ContentMediaTypeTag = "lunar.content.media_type";
@@ -52,12 +53,16 @@ public static class InfrastructureTelemetry
 
     public const string ProviderNameMetricTag = "provider";
     public const string ProviderModelMetricTag = "model";
+    public const string ProviderOperationMetricTag = "operation";
     public const string OutcomeTag = "outcome";
     public const string FailureKindMetricTag = "failure_kind";
 
-    // --- Bounded provider/model values ---
+    // --- Bounded provider/model/operation values ---
 
     public const string ProviderCloudflareWorkersAi = "cloudflare_workers_ai";
+    public const string ProviderCloudflareImages = "cloudflare_images";
+
+    public const string OperationForegroundIsolation = "foreground_isolation";
 
     // --- Outcome values (shared semantics with ApplicationTelemetry) ---
 

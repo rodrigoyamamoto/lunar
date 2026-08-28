@@ -6,6 +6,7 @@ using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.FileSystem;
 using Lunar.Infrastructure.Persistence;
+using Lunar.Infrastructure.Providers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -47,10 +48,22 @@ public sealed class LunarApiFactory : WebApplicationFactory<Program>
 
         builder.UseSetting("SuppressStatusMessages", "true");
 
+        builder.UseSetting("CloudflareForegroundIsolation:Endpoint", "https://test-worker.example.com/");
+        builder.UseSetting("CloudflareForegroundIsolation:ServiceToken", "test-token");
+
         builder.ConfigureServices(services =>
         {
-            services.RemoveAll<ICapabilityExecutor>();
-            services.AddSingleton<ICapabilityExecutor>(Executor);
+            services.RemoveAll<ICapabilityExecutorResolver>();
+            services.AddSingleton<ICapabilityExecutorResolver>(_ =>
+                CapabilityExecutorResolver.Create(new[]
+                {
+                    KeyValuePair.Create(
+                        Lunar.Api.Bootstrap.FirstProductLoopWorkflowBootstrap.TextToImageCapabilityId,
+                        (ICapabilityExecutor)Executor),
+                    KeyValuePair.Create(
+                        Lunar.Api.Bootstrap.ForegroundIsolationWorkflowBootstrap.ForegroundIsolationCapabilityId,
+                        (ICapabilityExecutor)Executor)
+                }));
 
             services.RemoveAll<IAssetRepository>();
             services.AddSingleton<IAssetRepository>(AssetRepository);
@@ -80,6 +93,35 @@ public sealed class LunarApiFactory : WebApplicationFactory<Program>
         var asset = new Asset(assetId, name, AssetType.Character);
         await AssetRepository.TryAddAsync(asset);
         return assetId;
+    }
+
+    public async Task<ArtifactId> SeedArtifactAsync(
+        AssetId assetId,
+        string name = "Test Artifact",
+        ArtifactType type = ArtifactType.ConceptImage,
+        string mediaType = "image/jpeg",
+        byte[]? content = null)
+    {
+        var artifactId = ArtifactId.New();
+        var executionId = WorkflowExecutionId.New();
+        var artifact = new Artifact(
+            artifactId,
+            assetId,
+            name,
+            type,
+            Array.Empty<ArtifactId>(),
+            executionId);
+
+        await ArtifactRepository.TryAddAsync(artifact);
+
+        var binaryContent = new BinaryArtifactContent(
+            content ?? new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 },
+            mediaType);
+
+        var contentStore = (LocalFileArtifactContentStore)Services.GetRequiredService(typeof(IArtifactContentStore));
+        await contentStore.TryAddAsync(artifactId, binaryContent, CancellationToken.None);
+
+        return artifactId;
     }
 
 

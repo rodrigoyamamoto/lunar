@@ -39,6 +39,18 @@ export interface ArtifactSummary {
   createdAt: string
   contentUrl: string
   generationInput: GenerationInput | null
+  sourceArtifactIds: string[]
+}
+
+export interface ArtifactTransformationResponse {
+  workflowExecutionId: string
+  artifactId: string
+  assetId: string
+  artifactName: string
+  artifactType: string
+  mediaType: string
+  contentUrl: string
+  sourceArtifactIds: string[]
 }
 
 export interface ApiErrorResponse {

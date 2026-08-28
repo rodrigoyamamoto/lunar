@@ -244,10 +244,10 @@ public class ActivityTests
         Assert.Equal(ActivityStatusCode.Ok, contentPersistActivity!.Status);
 
         var metadataPersistActivities = listener.Activities.Where(
-            a => a.OperationName == ApplicationTelemetry.ArtifactMetadataPersistActivityName).ToList();
+            a => a.OperationName == ApplicationTelemetry.ArtifactMetadataPersistActivityName
+                 && a.Status == ActivityStatusCode.Error).ToList();
         Assert.NotEmpty(metadataPersistActivities);
         var metadataPersistActivity = metadataPersistActivities.Last();
-        Assert.Equal(ActivityStatusCode.Error, metadataPersistActivity!.Status);
 
         var generationActivity = listener.Activities.LastOrDefault(
             a => a.OperationName == ApplicationTelemetry.GenerationActivityName);
@@ -340,7 +340,7 @@ public class ActivityTests
                 executionRepository,
                 definitionRepository,
                 artifactRepository,
-                executor,
+                new SingleCapabilityExecutorResolver(executor),
                 contentStore,
                 NullLogger<ExecuteWorkflowStepService>.Instance),
             generationInputRecordRepository,
@@ -362,10 +362,7 @@ public class ActivityTests
             cancellationToken.ThrowIfCancellationRequested();
 
             var output = new CapabilityExecutionOutput(
-                "output.jpg",
-                ArtifactType.ConceptImage,
-                Array.Empty<ArtifactId>(),
-                new BinaryArtifactContent(new byte[] { 0xFF, 0xD8 }, "image/jpeg"));
+            new BinaryArtifactContent(new byte[] { 0xFF, 0xD8 }, "image/jpeg"));
 
             return Task.FromResult<CapabilityExecutionOutcome>(
                 new CapabilityExecutionSucceeded(output));

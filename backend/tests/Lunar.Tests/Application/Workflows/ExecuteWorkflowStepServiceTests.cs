@@ -108,7 +108,7 @@ public class ExecuteWorkflowStepServiceTests
             executionRepository ?? new InMemoryWorkflowExecutionRepository(),
             definitionRepository ?? new InMemoryWorkflowDefinitionRepository(),
             artifactRepository ?? new InMemoryArtifactRepository(),
-            executor ?? new StubCapabilityExecutor(),
+            new SingleCapabilityExecutorResolver(executor ?? new StubCapabilityExecutor()),
             contentStore ?? new TrackingArtifactContentStore(),
             NullLogger<ExecuteWorkflowStepService>.Instance);
     }
@@ -134,9 +134,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionId: definitionId,
             definitionVersion: 1);
 
-        var executor = new StubCapabilityExecutor(
-            "knight-concept.png",
-            ArtifactType.ConceptImage);
+        var executor = new StubCapabilityExecutor();
 
         var service = CreateService(
             executionRepository,
@@ -144,7 +142,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository,
             executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value);
@@ -184,7 +182,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             executor: executor);
 
-        await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.NotNull(executor.CapturedRequest);
         Assert.Equal(v1Capability, executor.CapturedRequest!.CapabilityId);
@@ -217,7 +215,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             executor: executor);
 
-        await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.NotNull(executor.CapturedRequest);
         Assert.Equal(capabilityId, executor.CapturedRequest!.CapabilityId);
@@ -249,7 +247,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             executor: executor);
 
-        await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.NotNull(executor.CapturedRequest);
         var request = executor.CapturedRequest!;
@@ -285,7 +283,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         var artifact = result.Value!.Artifact;
@@ -296,7 +294,7 @@ public class ExecuteWorkflowStepServiceTests
 
 
     [Fact]
-    public async Task ExecuteAsync_Success_ShouldPreserveOutputNameTypeAndSourceArtifactIds()
+    public async Task ExecuteAsync_Success_ShouldUseApplicationOwnedSourceArtifactIds()
     {
         var executionRepository = new InMemoryWorkflowExecutionRepository();
         var definitionRepository = new InMemoryWorkflowDefinitionRepository();
@@ -316,17 +314,23 @@ public class ExecuteWorkflowStepServiceTests
             definitionId: definitionId,
             definitionVersion: 1);
 
-        var executor = new StubCapabilityExecutor(
-            "Ancient  Gate Texture",
-            ArtifactType.Texture,
-            new[] { sourceA, sourceB, sourceC });
+        // The executor does NOT supply lineage. It only provides name,
+        // type, and content. Lineage is Application-owned.
+        var executor = new StubCapabilityExecutor();
 
         var service = CreateService(
             executionRepository,
             definitionRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(
+            execution.Id,
+            1,
+            SharedInput,
+            new WorkflowStepArtifactContext(
+                "Ancient  Gate Texture",
+                ArtifactType.Texture,
+                new[] { sourceA, sourceB, sourceC }));
 
         Assert.True(result.IsSuccess);
         var artifact = result.Value!.Artifact;
@@ -336,6 +340,130 @@ public class ExecuteWorkflowStepServiceTests
         Assert.Equal(sourceA, artifact.SourceArtifactIds[0]);
         Assert.Equal(sourceB, artifact.SourceArtifactIds[1]);
         Assert.Equal(sourceC, artifact.SourceArtifactIds[2]);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_Success_TextToImage_LineageIsEmpty()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        var executor = new StubCapabilityExecutor();
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(
+            execution.Id,
+            1,
+            SharedInput,
+            new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
+
+        Assert.True(result.IsSuccess);
+        var artifact = result.Value!.Artifact;
+        Assert.Empty(artifact.SourceArtifactIds);
+    }
+
+
+    [Fact]
+    public async Task ExecuteAsync_Success_ProviderCannotControlLineage()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var definitionId = WorkflowDefinitionId.New();
+        var sourceId = ArtifactId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        // The executor returns a normal output without any lineage concept.
+        // The Application supplies lineage independently.
+        var executor = new StubCapabilityExecutor();
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(
+            execution.Id,
+            1,
+            SharedInput,
+            new WorkflowStepArtifactContext(
+                "Background removed",
+                ArtifactType.ConceptImage,
+                new[] { sourceId }));
+
+        Assert.True(result.IsSuccess);
+        var artifact = result.Value!.Artifact;
+        Assert.Single(artifact.SourceArtifactIds);
+        Assert.Equal(sourceId, artifact.SourceArtifactIds[0]);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Success_ProviderCannotControlNameOrType()
+    {
+        var executionRepository = new InMemoryWorkflowExecutionRepository();
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        var definitionId = WorkflowDefinitionId.New();
+
+        await PersistDefinitionAsync(
+            definitionRepository,
+            definitionId,
+            1,
+            new WorkflowStep(1, CapabilityId.New()));
+
+        var execution = await PersistRunningExecutionAsync(
+            executionRepository,
+            definitionId: definitionId,
+            definitionVersion: 1);
+
+        // The executor only produces content — it has no way to supply
+        // name, type, or lineage. Application determines all three.
+        var executor = new StubCapabilityExecutor();
+
+        var service = CreateService(
+            executionRepository,
+            definitionRepository,
+            executor: executor);
+
+        var result = await service.ExecuteAsync(
+            execution.Id,
+            1,
+            SharedInput,
+            new WorkflowStepArtifactContext(
+                "Application-Defined Name",
+                ArtifactType.Texture,
+                Array.Empty<ArtifactId>()));
+
+        Assert.True(result.IsSuccess);
+        var artifact = result.Value!.Artifact;
+        Assert.Equal("Application-Defined Name", artifact.Name);
+        Assert.Equal(ArtifactType.Texture, artifact.Type);
+        Assert.Empty(artifact.SourceArtifactIds);
     }
 
 
@@ -358,9 +486,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionId: definitionId,
             definitionVersion: 1);
 
-        var executor = new StubCapabilityExecutor(
-            "persisted-concept.png",
-            ArtifactType.ConceptImage);
+        var executor = new StubCapabilityExecutor();
 
         var service = CreateService(
             executionRepository,
@@ -368,12 +494,12 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository,
             executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         var retrieved = await artifactRepository.GetAsync(result.Value!.Artifact.Id);
         Assert.NotNull(retrieved);
-        Assert.Equal("persisted-concept.png", retrieved!.Name);
+        Assert.Equal("test", retrieved!.Name);
         Assert.Equal(ArtifactType.ConceptImage, retrieved.Type);
         Assert.Equal(execution.AssetId, retrieved.AssetId);
         Assert.Equal(execution.Id, retrieved.SourceExecutionId);
@@ -401,17 +527,14 @@ public class ExecuteWorkflowStepServiceTests
         var content = new BinaryArtifactContent(
             new byte[] { 0x00, 0x01, 0x7F, 0x80, 0xFE, 0xFF },
             "image/png");
-        var executor = new StubCapabilityExecutor(
-            "knight-concept.png",
-            ArtifactType.ConceptImage,
-            content: content);
+        var executor = new StubCapabilityExecutor(content);
 
         var service = CreateService(
             executionRepository,
             definitionRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         Assert.IsType<ProducedArtifact>(result.Value);
@@ -439,17 +562,14 @@ public class ExecuteWorkflowStepServiceTests
 
         var expectedBytes = new byte[] { 0x00, 0x01, 0x7F, 0x80, 0xFE, 0xFF };
         var content = new BinaryArtifactContent(expectedBytes, "image/png");
-        var executor = new StubCapabilityExecutor(
-            "knight-concept.png",
-            ArtifactType.ConceptImage,
-            content: content);
+        var executor = new StubCapabilityExecutor(content);
 
         var service = CreateService(
             executionRepository,
             definitionRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         var binaryContent = Assert.IsType<BinaryArtifactContent>(result.Value!.Content);
@@ -478,17 +598,14 @@ public class ExecuteWorkflowStepServiceTests
         var content = new BinaryArtifactContent(
             new byte[] { 0x00, 0x01 },
             "image/webp");
-        var executor = new StubCapabilityExecutor(
-            "knight-concept.png",
-            ArtifactType.ConceptImage,
-            content: content);
+        var executor = new StubCapabilityExecutor(content);
 
         var service = CreateService(
             executionRepository,
             definitionRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         var binaryContent = Assert.IsType<BinaryArtifactContent>(result.Value!.Content);
@@ -521,7 +638,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: executor);
 
         var input = new TextPromptInput("Generate a dark fantasy raven shrine.");
-        await service.ExecuteAsync(execution.Id, 1, input);
+        await service.ExecuteAsync(execution.Id, 1, input, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.NotNull(executor.CapturedRequest);
         Assert.Same(input, executor.CapturedRequest!.Input);
@@ -556,7 +673,7 @@ public class ExecuteWorkflowStepServiceTests
 
         var prompt = "  ancient raven shrine, moonlit -- cracked stone  ";
         var input = new TextPromptInput(prompt);
-        await service.ExecuteAsync(execution.Id, 1, input);
+        await service.ExecuteAsync(execution.Id, 1, input, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.NotNull(executor.CapturedRequest);
         var textPrompt = Assert.IsType<TextPromptInput>(executor.CapturedRequest!.Input);
@@ -592,7 +709,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository: trackingArtifactRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
@@ -634,7 +751,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository: trackingArtifactRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
@@ -672,7 +789,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository: trackingArtifactRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
@@ -710,7 +827,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository: trackingArtifactRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
@@ -751,7 +868,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository: trackingArtifactRepository,
             executor: executor);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowStepExecutionFailed>(result.Error);
@@ -789,7 +906,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository: trackingArtifactRepository,
             executor: executor);
 
-        await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         var unchanged = await executionRepository.GetAsync(execution.Id);
         Assert.NotNull(unchanged);
@@ -876,7 +993,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: nullExecutor);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
     }
 
 
@@ -887,7 +1004,7 @@ public class ExecuteWorkflowStepServiceTests
         var service = CreateService(executionRepository: trackingExecutionRepository);
 
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            service.ExecuteAsync(WorkflowExecutionId.New(), 1, null!));
+            service.ExecuteAsync(WorkflowExecutionId.New(), 1, null!, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
 
         Assert.False(
             trackingExecutionRepository.GetAsyncWasCalled,
@@ -904,7 +1021,7 @@ public class ExecuteWorkflowStepServiceTests
 
         var executionId = WorkflowExecutionId.New();
 
-        var result = await service.ExecuteAsync(executionId, 1, SharedInput);
+        var result = await service.ExecuteAsync(executionId, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowExecutionNotFound>(result.Error);
@@ -932,7 +1049,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: trackingExecutor,
             artifactRepository: trackingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowExecutionNotRunning>(result.Error);
@@ -963,7 +1080,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: trackingExecutor,
             artifactRepository: trackingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowExecutionNotRunning>(result.Error);
@@ -992,7 +1109,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: trackingExecutor,
             artifactRepository: trackingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowDefinitionNotFound>(result.Error);
@@ -1029,7 +1146,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: trackingExecutor,
             artifactRepository: trackingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowDefinitionNotFound>(result.Error);
@@ -1066,7 +1183,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: trackingExecutor,
             artifactRepository: trackingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 3, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 3, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<WorkflowStepNotFound>(result.Error);
@@ -1089,7 +1206,7 @@ public class ExecuteWorkflowStepServiceTests
         var service = CreateService(executionRepository: trackingExecutionRepository);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.ExecuteAsync(WorkflowExecutionId.New(), stepPosition, SharedInput));
+            service.ExecuteAsync(WorkflowExecutionId.New(), stepPosition, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
 
         Assert.False(
             trackingExecutionRepository.GetAsyncWasCalled,
@@ -1126,7 +1243,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: throwingExecutor);
 
         var actual = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
 
         Assert.Same(expectedException, actual);
         Assert.False(
@@ -1136,7 +1253,7 @@ public class ExecuteWorkflowStepServiceTests
 
 
     [Fact]
-    public async Task ExecuteAsync_EmptyArtifactName_ShouldFailAtArtifactConstruction()
+    public async Task ExecuteAsync_EmptyArtifactName_RejectedAtContextConstruction()
     {
         var executionRepository = new InMemoryWorkflowExecutionRepository();
         var definitionRepository = new InMemoryWorkflowDefinitionRepository();
@@ -1154,9 +1271,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionId: definitionId,
             definitionVersion: 1);
 
-        var executor = new StubCapabilityExecutor(
-            "",
-            ArtifactType.ConceptImage);
+        var executor = new StubCapabilityExecutor();
 
         var service = CreateService(
             executionRepository,
@@ -1164,20 +1279,23 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository: trackingArtifactRepository,
             executor: executor);
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput));
+        // The context now rejects empty names at construction, before
+        // the executor is ever called. This is a programmer error, not
+        // a runtime execution failure.
+        Assert.Throws<ArgumentException>(() =>
+            new WorkflowStepArtifactContext("", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
-        Assert.True(
+        Assert.False(
             executor.ExecuteAsyncWasCalled,
-            "Executor must have been reached before Artifact construction.");
+            "Executor must not be called when context construction fails.");
         Assert.False(
             trackingArtifactRepository.TryAddAsyncWasCalled,
-            "Persistence must not be called when Artifact construction fails.");
+            "Persistence must not be called when context construction fails.");
     }
 
 
     [Fact]
-    public async Task ExecuteAsync_WhitespaceArtifactName_ShouldFailAtArtifactConstruction()
+    public async Task ExecuteAsync_WhitespaceArtifactName_RejectedAtContextConstruction()
     {
         var executionRepository = new InMemoryWorkflowExecutionRepository();
         var definitionRepository = new InMemoryWorkflowDefinitionRepository();
@@ -1195,9 +1313,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionId: definitionId,
             definitionVersion: 1);
 
-        var executor = new StubCapabilityExecutor(
-            "   ",
-            ArtifactType.ConceptImage);
+        var executor = new StubCapabilityExecutor();
 
         var service = CreateService(
             executionRepository,
@@ -1205,15 +1321,15 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository: trackingArtifactRepository,
             executor: executor);
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput));
+        Assert.Throws<ArgumentException>(() =>
+            new WorkflowStepArtifactContext("   ", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
-        Assert.True(
+        Assert.False(
             executor.ExecuteAsyncWasCalled,
-            "Executor must have been reached before Artifact construction.");
+            "Executor must not be called when context construction fails.");
         Assert.False(
             trackingArtifactRepository.TryAddAsyncWasCalled,
-            "Persistence must not be called when Artifact construction fails.");
+            "Persistence must not be called when context construction fails.");
     }
 
 
@@ -1247,7 +1363,7 @@ public class ExecuteWorkflowStepServiceTests
         cts.Cancel();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput, cts.Token));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()), cts.Token));
 
         Assert.False(trackingExecutor.ExecuteAsyncWasCalled, "Executor must not be called when token is pre-cancelled.");
         Assert.False(trackingArtifactRepository.TryAddAsyncWasCalled, "Persistence must not be called when token is pre-cancelled.");
@@ -1283,7 +1399,7 @@ public class ExecuteWorkflowStepServiceTests
             executor: cancellingExecutor);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput, cts.Token));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()), cts.Token));
 
         Assert.True(
             cancellingExecutor.ExecuteAsyncWasCalled,
@@ -1321,7 +1437,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository: cancellingArtifactRepository);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput, cts.Token));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()), cts.Token));
 
         Assert.True(
             cancellingArtifactRepository.TryAddAsyncWasCalled,
@@ -1353,7 +1469,7 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             artifactRepository: rejectingArtifactRepository);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<ArtifactPersistenceFailed>(result.Error);
@@ -1387,7 +1503,7 @@ public class ExecuteWorkflowStepServiceTests
 
         var service = CreateService(executionRepository, definitionRepository);
 
-        await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         var reloaded = await executionRepository.GetAsync(execution.Id);
         Assert.NotNull(reloaded);
@@ -1422,8 +1538,8 @@ public class ExecuteWorkflowStepServiceTests
             definitionRepository,
             artifactRepository);
 
-        var first = await service.ExecuteAsync(execution.Id, 1, SharedInput);
-        var second = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var first = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
+        var second = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
@@ -1462,7 +1578,7 @@ public class ExecuteWorkflowStepServiceTests
             executor,
             contentStore);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(
@@ -1505,7 +1621,7 @@ public class ExecuteWorkflowStepServiceTests
             executor,
             contentStore);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         Assert.False(contentStore.TryAddAsyncWasCalled, "Content store must not be called on capability failure.");
@@ -1541,7 +1657,7 @@ public class ExecuteWorkflowStepServiceTests
             trackingExecutor,
             contentStore);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         var error = Assert.IsType<ArtifactContentPersistenceFailed>(result.Error);
@@ -1579,7 +1695,7 @@ public class ExecuteWorkflowStepServiceTests
             contentStore: contentStore);
 
         await Assert.ThrowsAsync<IOException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
 
         Assert.False(artifactRepository.TryAddAsyncWasCalled, "Metadata must not be called when content add throws.");
         Assert.Equal(0, contentStore.TryDeleteCallCount);
@@ -1611,7 +1727,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository,
             contentStore: contentStore);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsSuccess);
         Assert.False(contentStore.TryDeleteAsyncWasCalled, "Delete must not be called on full success.");
@@ -1643,7 +1759,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository,
             contentStore: contentStore);
 
-        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        var result = await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.True(result.IsFailure);
         Assert.IsType<ArtifactPersistenceFailed>(result.Error);
@@ -1679,7 +1795,7 @@ public class ExecuteWorkflowStepServiceTests
             artifactRepository,
             contentStore: contentStore);
 
-        await service.ExecuteAsync(execution.Id, 1, SharedInput);
+        await service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()));
 
         Assert.NotNull(contentStore.DeleteCancellationToken);
         Assert.False(contentStore.DeleteCancellationToken!.Value.CanBeCanceled,
@@ -1714,7 +1830,7 @@ public class ExecuteWorkflowStepServiceTests
             contentStore: contentStore);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
 
         Assert.True(contentStore.DeleteWasCalled, "Compensation must be attempted when metadata throws.");
         Assert.False(contentStore.Contains(contentStore.CapturedArtifactId!.Value),
@@ -1749,7 +1865,7 @@ public class ExecuteWorkflowStepServiceTests
             contentStore: contentStore);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput, cts.Token));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>()), cts.Token));
 
         Assert.True(contentStore.DeleteWasCalled, "Compensation must be attempted when cancellation occurs after content success.");
         Assert.False(contentStore.Contains(contentStore.CapturedArtifactId!.Value),
@@ -1786,7 +1902,7 @@ public class ExecuteWorkflowStepServiceTests
             contentStore: contentStore);
 
         await Assert.ThrowsAsync<IOException>(() =>
-            service.ExecuteAsync(execution.Id, 1, SharedInput));
+            service.ExecuteAsync(execution.Id, 1, SharedInput, new WorkflowStepArtifactContext("test", ArtifactType.ConceptImage, Array.Empty<ArtifactId>())));
 
         Assert.True(contentStore.TryAddAsyncWasCalled, "Content add must have been called and returned true.");
         Assert.True(contentStore.DeleteWasCalled, "Compensation delete must have been attempted.");
@@ -1801,7 +1917,7 @@ public class ExecuteWorkflowStepServiceTests
                 null!,
                 new InMemoryWorkflowDefinitionRepository(),
                 new InMemoryArtifactRepository(),
-                new StubCapabilityExecutor(),
+                new SingleCapabilityExecutorResolver(new StubCapabilityExecutor()),
                 new TrackingArtifactContentStore(),
                 NullLogger<ExecuteWorkflowStepService>.Instance));
     }
@@ -1815,7 +1931,7 @@ public class ExecuteWorkflowStepServiceTests
                 new InMemoryWorkflowExecutionRepository(),
                 null!,
                 new InMemoryArtifactRepository(),
-                new StubCapabilityExecutor(),
+                new SingleCapabilityExecutorResolver(new StubCapabilityExecutor()),
                 new TrackingArtifactContentStore(),
                 NullLogger<ExecuteWorkflowStepService>.Instance));
     }
@@ -1829,14 +1945,14 @@ public class ExecuteWorkflowStepServiceTests
                 new InMemoryWorkflowExecutionRepository(),
                 new InMemoryWorkflowDefinitionRepository(),
                 null!,
-                new StubCapabilityExecutor(),
+                new SingleCapabilityExecutorResolver(new StubCapabilityExecutor()),
                 new TrackingArtifactContentStore(),
                 NullLogger<ExecuteWorkflowStepService>.Instance));
     }
 
 
     [Fact]
-    public void Constructor_NullExecutor_ShouldThrow()
+    public void Constructor_NullExecutorResolver_ShouldThrow()
     {
         Assert.Throws<ArgumentNullException>(() =>
             new ExecuteWorkflowStepService(
@@ -1857,7 +1973,7 @@ public class ExecuteWorkflowStepServiceTests
                 new InMemoryWorkflowExecutionRepository(),
                 new InMemoryWorkflowDefinitionRepository(),
                 new InMemoryArtifactRepository(),
-                new StubCapabilityExecutor(),
+                new SingleCapabilityExecutorResolver(new StubCapabilityExecutor()),
                 null!,
                 NullLogger<ExecuteWorkflowStepService>.Instance));
     }
@@ -1874,16 +1990,9 @@ public class ExecuteWorkflowStepServiceTests
         public int CallCount { get; private set; }
 
 
-        public StubCapabilityExecutor(
-            string artifactName = "test-output.png",
-            ArtifactType artifactType = ArtifactType.ConceptImage,
-            IEnumerable<ArtifactId>? sourceArtifactIds = null,
-            ArtifactContent? content = null)
+        public StubCapabilityExecutor(ArtifactContent? content = null)
         {
             _output = new CapabilityExecutionOutput(
-                artifactName,
-                artifactType,
-                sourceArtifactIds ?? Array.Empty<ArtifactId>(),
                 content ?? SharedContent);
         }
 
@@ -1943,10 +2052,7 @@ public class ExecuteWorkflowStepServiceTests
 
             return Task.FromResult<CapabilityExecutionOutcome>(
                 new CapabilityExecutionSucceeded(new CapabilityExecutionOutput(
-                    "cancelled.png",
-                    ArtifactType.ConceptImage,
-                    Array.Empty<ArtifactId>(),
-                    SharedContent)));
+            SharedContent)));
         }
     }
 

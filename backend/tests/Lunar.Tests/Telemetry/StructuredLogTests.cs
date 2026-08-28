@@ -186,7 +186,7 @@ public class StructuredLogTests
                 executionRepository,
                 definitionRepository,
                 artifactRepository,
-                executor,
+                new SingleCapabilityExecutorResolver(executor),
                 contentStore,
                 NullLogger<ExecuteWorkflowStepService>.Instance),
             new InMemoryGenerationInputRecordRepository(),
@@ -210,10 +210,7 @@ public class StructuredLogTests
             cancellationToken.ThrowIfCancellationRequested();
 
             var output = new CapabilityExecutionOutput(
-                "output.jpg",
-                ArtifactType.ConceptImage,
-                Array.Empty<ArtifactId>(),
-                new BinaryArtifactContent(new byte[] { 0xFF, 0xD8 }, "image/jpeg"));
+            new BinaryArtifactContent(new byte[] { 0xFF, 0xD8 }, "image/jpeg"));
 
             return Task.FromResult<CapabilityExecutionOutcome>(
                 new CapabilityExecutionSucceeded(output));

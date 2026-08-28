@@ -215,7 +215,7 @@ public class GenerateDefaultArtifactServiceTests
                 NullLogger<StartWorkflowExecutionService>.Instance),
             new ExecuteWorkflowStepService(
                 executionRepository, definitionRepository,
-                artifactRepository, executor, contentStore,
+                artifactRepository, new SingleCapabilityExecutorResolver(executor), contentStore,
                 NullLogger<ExecuteWorkflowStepService>.Instance),
             new InMemoryGenerationInputRecordRepository(),
             NullLogger<GenerateArtifactService>.Instance);
@@ -241,7 +241,7 @@ public class GenerateDefaultArtifactServiceTests
                 new InMemoryWorkflowExecutionRepository(),
                 new InMemoryWorkflowDefinitionRepository(),
                 new InMemoryArtifactRepository(),
-                new TrackingExecutor(),
+                new SingleCapabilityExecutorResolver(new TrackingExecutor()),
                 new InMemoryContentStore(),
                 NullLogger<ExecuteWorkflowStepService>.Instance),
             new InMemoryGenerationInputRecordRepository(),
@@ -263,10 +263,7 @@ public class GenerateDefaultArtifactServiceTests
             LastRequest = request;
 
             var output = new CapabilityExecutionOutput(
-                "output.jpg",
-                ArtifactType.ConceptImage,
-                Array.Empty<ArtifactId>(),
-                new BinaryArtifactContent(new byte[] { 0xFF, 0xD8 }, "image/jpeg"));
+            new BinaryArtifactContent(new byte[] { 0xFF, 0xD8 }, "image/jpeg"));
 
             return Task.FromResult<CapabilityExecutionOutcome>(
                 new CapabilityExecutionSucceeded(output));

@@ -13,7 +13,7 @@ public sealed class ExecuteWorkflowStepService
     private readonly IWorkflowExecutionRepository _workflowExecutionRepository;
     private readonly IWorkflowDefinitionRepository _workflowDefinitionRepository;
     private readonly IArtifactRepository _artifactRepository;
-    private readonly ICapabilityExecutor _capabilityExecutor;
+    private readonly ICapabilityExecutorResolver _capabilityExecutorResolver;
     private readonly IArtifactContentStore _artifactContentStore;
     private readonly ILogger<ExecuteWorkflowStepService> _logger;
 
@@ -21,21 +21,21 @@ public sealed class ExecuteWorkflowStepService
         IWorkflowExecutionRepository workflowExecutionRepository,
         IWorkflowDefinitionRepository workflowDefinitionRepository,
         IArtifactRepository artifactRepository,
-        ICapabilityExecutor capabilityExecutor,
+        ICapabilityExecutorResolver capabilityExecutorResolver,
         IArtifactContentStore artifactContentStore,
         ILogger<ExecuteWorkflowStepService> logger)
     {
         ArgumentNullException.ThrowIfNull(workflowExecutionRepository);
         ArgumentNullException.ThrowIfNull(workflowDefinitionRepository);
         ArgumentNullException.ThrowIfNull(artifactRepository);
-        ArgumentNullException.ThrowIfNull(capabilityExecutor);
+        ArgumentNullException.ThrowIfNull(capabilityExecutorResolver);
         ArgumentNullException.ThrowIfNull(artifactContentStore);
         ArgumentNullException.ThrowIfNull(logger);
 
         _workflowExecutionRepository = workflowExecutionRepository;
         _workflowDefinitionRepository = workflowDefinitionRepository;
         _artifactRepository = artifactRepository;
-        _capabilityExecutor = capabilityExecutor;
+        _capabilityExecutorResolver = capabilityExecutorResolver;
         _artifactContentStore = artifactContentStore;
         _logger = logger;
     }
@@ -45,6 +45,7 @@ public sealed class ExecuteWorkflowStepService
         WorkflowExecutionId workflowExecutionId,
         int stepPosition,
         CapabilityExecutionInput input,
+        WorkflowStepArtifactContext artifactContext,
         CancellationToken cancellationToken = default)
     {
         if (stepPosition < 1)
@@ -55,6 +56,7 @@ public sealed class ExecuteWorkflowStepService
         }
 
         ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(artifactContext);
 
         var execution = await _workflowExecutionRepository.GetAsync(
             workflowExecutionId,
@@ -107,6 +109,14 @@ public sealed class ExecuteWorkflowStepService
             step.Position,
             input);
 
+        var executor = _capabilityExecutorResolver.Resolve(step.CapabilityId);
+
+        if (executor is null)
+        {
+            return Result<ProducedArtifact>.Failure(
+                new CapabilityExecutorNotFound(step.CapabilityId));
+        }
+
         CapabilityExecutionOutcome outcome;
 
         using (var capabilityActivity = ApplicationTelemetry.ActivitySource.StartActivity(
@@ -121,7 +131,7 @@ public sealed class ExecuteWorkflowStepService
 
             var capabilityStopwatch = Stopwatch.StartNew();
 
-            outcome = await _capabilityExecutor.ExecuteAsync(
+            outcome = await executor.ExecuteAsync(
                 request,
                 cancellationToken);
 
@@ -163,9 +173,9 @@ public sealed class ExecuteWorkflowStepService
                     var artifact = new Artifact(
                         ArtifactId.New(),
                         execution.AssetId,
-                        output.ArtifactName,
-                        output.ArtifactType,
-                        output.SourceArtifactIds,
+                        artifactContext.ArtifactName,
+                        artifactContext.ArtifactType,
+                        artifactContext.SourceArtifactIds,
                         execution.Id);
 
                     var contentSizeBytes = output.Content is BinaryArtifactContent binary

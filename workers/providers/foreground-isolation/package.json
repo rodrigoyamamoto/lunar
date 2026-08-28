@@ -1,0 +1,17 @@
+{
+  "name": "lunar-foreground-isolation-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lunar Asset Studio provider-edge adapter for Cloudflare Images foreground isolation",
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test",
+    "deploy:dry-run": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "typescript": "^5.7.0",
+    "wrangler": "^3.90.0"
+  }
+}

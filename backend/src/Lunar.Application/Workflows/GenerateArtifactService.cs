@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Lunar.Application.Artifacts;
 using Lunar.Application.Errors;
+using Lunar.Core.Artifacts;
 using Lunar.Core.Assets;
 using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
@@ -47,6 +48,7 @@ public sealed class GenerateArtifactService
         int workflowDefinitionVersion,
         int stepPosition,
         CapabilityExecutionInput input,
+        WorkflowStepArtifactContext artifactContext,
         CancellationToken cancellationToken = default)
     {
         if (assetId.Value == Guid.Empty)
@@ -78,6 +80,7 @@ public sealed class GenerateArtifactService
         }
 
         ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(artifactContext);
 
         using var activity = ApplicationTelemetry.ActivitySource.StartActivity(
             ApplicationTelemetry.WorkflowGenerateActivityName);
@@ -226,6 +229,7 @@ public sealed class GenerateArtifactService
                 executionId,
                 stepPosition,
                 input,
+                artifactContext,
                 cancellationToken);
         }
 

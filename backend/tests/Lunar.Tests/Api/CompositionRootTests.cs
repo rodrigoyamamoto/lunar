@@ -8,6 +8,7 @@ using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.FileSystem;
 using Lunar.Infrastructure.Persistence;
+using Lunar.Infrastructure.Providers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -110,9 +111,17 @@ public class CompositionRootTests : IClassFixture<LunarApiFactory>
 
 
     [Fact]
-    public void CompositionRoot_CloudflareExecutorIsReplaceableByTestDouble()
+    public void CompositionRoot_CapabilityExecutorResolverIsReplaceableByTestDouble()
     {
-        var executor = _factory.Services.GetRequiredService<ICapabilityExecutor>();
-        Assert.IsType<DeterministicCapabilityExecutor>(executor);
+        var resolver = _factory.Services.GetRequiredService<ICapabilityExecutorResolver>();
+        Assert.IsType<CapabilityExecutorResolver>(resolver);
+
+        var resolvedTextToImage = resolver.Resolve(
+            FirstProductLoopWorkflowBootstrap.TextToImageCapabilityId);
+        Assert.IsType<DeterministicCapabilityExecutor>(resolvedTextToImage);
+
+        var resolvedForegroundIsolation = resolver.Resolve(
+            ForegroundIsolationWorkflowBootstrap.ForegroundIsolationCapabilityId);
+        Assert.IsType<DeterministicCapabilityExecutor>(resolvedForegroundIsolation);
     }
 }

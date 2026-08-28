@@ -8,9 +8,6 @@ public class CapabilityExecutionSucceededTests
     private static CapabilityExecutionOutput CreateOutput()
     {
         return new CapabilityExecutionOutput(
-            "knight-concept.png",
-            ArtifactType.ConceptImage,
-            Array.Empty<ArtifactId>(),
             new BinaryArtifactContent(new byte[] { 0xFF, 0xD8, 0xFF }, "image/jpeg"));
     }
 

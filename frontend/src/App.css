@@ -444,3 +444,41 @@ body {
   color: var(--lunar-text-muted);
   font-style: italic;
 }
+
+.lunar-preview-checkerboard {
+  background-image:
+    linear-gradient(45deg, #2a2a3a 25%, transparent 25%),
+    linear-gradient(-45deg, #2a2a3a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2a2a3a 75%),
+    linear-gradient(-45deg, transparent 75%, #2a2a3a 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  background-color: #1e1e2e;
+}
+
+.lunar-lineage {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--lunar-border);
+}
+
+.lunar-lineage-text {
+  font-size: 0.85rem;
+  color: var(--lunar-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.lunar-lineage-source {
+  margin-right: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.lunar-remove-background {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--lunar-border);
+}
+
+.lunar-remove-background .lunar-error-message {
+  margin-top: 0.5rem;
+}
