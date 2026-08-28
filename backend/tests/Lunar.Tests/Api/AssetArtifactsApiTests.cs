@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Lunar.Api.Contracts;
 using Lunar.Core.Artifacts;
 using Lunar.Core.Assets;
+using Lunar.Core.Workflows;
 
 namespace Lunar.Tests.Api;
 
@@ -274,5 +275,140 @@ public class AssetArtifactsApiTests : IClassFixture<LunarApiFactory>
 
         var contentX = await client.GetAsync(body[1].ContentUrl);
         Assert.Equal(HttpStatusCode.OK, contentX.StatusCode);
+    }
+
+
+    [Fact]
+    public async Task ListArtifacts_GeneratedArtifact_ReturnsGenerationInputWithExactPrompt()
+    {
+        var assetId = await _factory.SeedAssetAsync("Provenance Asset");
+        await _factory.PostGenerationAsync(new GenerationRequest
+        {
+            AssetId = assetId.Value,
+            Prompt = "a ruined obsidian sword with  internal  whitespace"
+        });
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/assets/{assetId.Value}/artifacts");
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<List<ArtifactSummaryResponse>>();
+        Assert.NotNull(body);
+        Assert.Single(body!);
+
+        var entry = body![0];
+        Assert.NotNull(entry.GenerationInput);
+        Assert.Equal("a ruined obsidian sword with  internal  whitespace",
+            entry.GenerationInput!.Prompt);
+        Assert.NotEqual(Guid.Empty, entry.GenerationInput!.WorkflowExecutionId);
+    }
+
+
+    [Fact]
+    public async Task ListArtifacts_MultipleGenerations_EachArtifactHasOwnPrompt()
+    {
+        var assetId = await _factory.SeedAssetAsync("Multi Prompt Asset");
+
+        await _factory.PostGenerationAsync(new GenerationRequest
+        {
+            AssetId = assetId.Value,
+            Prompt = "prompt alpha"
+        });
+
+        await _factory.PostGenerationAsync(new GenerationRequest
+        {
+            AssetId = assetId.Value,
+            Prompt = "prompt beta"
+        });
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/assets/{assetId.Value}/artifacts");
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<List<ArtifactSummaryResponse>>();
+        Assert.NotNull(body);
+        Assert.Equal(2, body!.Count);
+
+        Assert.Equal("prompt beta", body[0].GenerationInput!.Prompt);
+        Assert.Equal("prompt alpha", body[1].GenerationInput!.Prompt);
+        Assert.NotEqual(body[0].GenerationInput!.WorkflowExecutionId,
+            body[1].GenerationInput!.WorkflowExecutionId);
+    }
+
+
+    [Fact]
+    public async Task ListArtifacts_GenerationInputNull_WhenNoProvenanceExists()
+    {
+        var assetId = await _factory.SeedAssetAsync();
+
+        var artifactId = ArtifactId.New();
+        var artifact = new Artifact(
+            artifactId,
+            assetId,
+            "orphan.jpg",
+            ArtifactType.ConceptImage,
+            Array.Empty<ArtifactId>(),
+            sourceExecutionId: null);
+        await _factory.ArtifactRepository.TryAddAsync(artifact);
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/assets/{assetId.Value}/artifacts");
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<List<ArtifactSummaryResponse>>();
+        Assert.NotNull(body);
+        Assert.Single(body!);
+        Assert.Null(body![0].GenerationInput);
+    }
+
+
+    [Fact]
+    public async Task ListArtifacts_GenerationInputNull_WhenSourceExecutionIdHasNoMatchingRecord()
+    {
+        var assetId = await _factory.SeedAssetAsync();
+
+        var artifactId = ArtifactId.New();
+        var artifact = new Artifact(
+            artifactId,
+            assetId,
+            "missing-record.jpg",
+            ArtifactType.ConceptImage,
+            Array.Empty<ArtifactId>(),
+            sourceExecutionId: WorkflowExecutionId.New());
+        await _factory.ArtifactRepository.TryAddAsync(artifact);
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/assets/{assetId.Value}/artifacts");
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<List<ArtifactSummaryResponse>>();
+        Assert.NotNull(body);
+        Assert.Single(body!);
+        Assert.Null(body![0].GenerationInput);
+    }
+
+
+    [Fact]
+    public async Task ListArtifacts_GenerationInputDoesNotLeakProviderDetails()
+    {
+        var assetId = await _factory.SeedAssetAsync();
+        await _factory.PostGenerationAsync(new GenerationRequest
+        {
+            AssetId = assetId.Value,
+            Prompt = "a test prompt"
+        });
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/assets/{assetId.Value}/artifacts");
+
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+
+        Assert.DoesNotContain("cloudflare", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("flux", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ApiToken", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("AccountId", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("data:image", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("content.bin", json, StringComparison.OrdinalIgnoreCase);
     }
 }

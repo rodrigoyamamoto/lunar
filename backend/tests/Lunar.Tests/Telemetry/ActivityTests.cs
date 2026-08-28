@@ -259,6 +259,33 @@ public class ActivityTests
     }
 
 
+    [Fact]
+    public async Task GenerationInputPersistenceFailure_MarksGenerationInputPersistenceStageAndGenerationFailure()
+    {
+        using var listener = CreateListener();
+        var rejectingInputRepository = new RejectingGenerationInputRecordRepository();
+        var service = await CreateServiceAsync(
+            withDefinition: true,
+            withAsset: true,
+            generationInputRecordRepository: rejectingInputRepository);
+
+        var result = await service.GenerateAsync(SharedAssetId, new TextPromptInput("test"));
+
+        Assert.True(result.IsFailure);
+
+        var generationActivity = listener.Activities.LastOrDefault(
+            a => a.OperationName == ApplicationTelemetry.GenerationActivityName);
+        Assert.NotNull(generationActivity);
+        Assert.Equal(ActivityStatusCode.Error, generationActivity!.Status);
+        Assert.Equal(ApplicationTelemetry.OutcomeFailure,
+            generationActivity.GetTagItem(ApplicationTelemetry.OperationOutcomeTag)?.ToString());
+        Assert.Equal(ApplicationTelemetry.StageGenerationInputPersistence,
+            generationActivity.GetTagItem(ApplicationTelemetry.FailureStageTag)?.ToString());
+        Assert.NotEqual(ApplicationTelemetry.StageWorkflowExecutionCreation,
+            generationActivity.GetTagItem(ApplicationTelemetry.FailureStageTag)?.ToString());
+    }
+
+
     private static TestActivityListener CreateListener()
     {
         return new TestActivityListener(
@@ -273,7 +300,8 @@ public class ActivityTests
         ICapabilityExecutor? executor = null,
         GenerationWorkflowTarget? target = null,
         IArtifactContentStore? contentStore = null,
-        IArtifactRepository? artifactRepository = null)
+        IArtifactRepository? artifactRepository = null,
+        IGenerationInputRecordRepository? generationInputRecordRepository = null)
     {
         var definitionRepository = new InMemoryWorkflowDefinitionRepository();
         var assetRepository = new InMemoryAssetRepository();
@@ -282,6 +310,7 @@ public class ActivityTests
         contentStore ??= new InMemoryContentStore();
         executor ??= new TrackingExecutor();
         target ??= SharedTarget;
+        generationInputRecordRepository ??= new InMemoryGenerationInputRecordRepository();
 
         if (withDefinition)
         {
@@ -314,6 +343,7 @@ public class ActivityTests
                 executor,
                 contentStore,
                 NullLogger<ExecuteWorkflowStepService>.Instance),
+            generationInputRecordRepository,
             NullLogger<GenerateArtifactService>.Instance);
 
         return new GenerateDefaultArtifactService(
@@ -427,6 +457,25 @@ public class ActivityTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult<IReadOnlyList<Artifact>>(Array.Empty<Artifact>());
+        }
+    }
+
+
+    private sealed class RejectingGenerationInputRecordRepository : IGenerationInputRecordRepository
+    {
+        public Task<bool> TryAddAsync(
+            GenerationInputRecord record,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(false);
+        }
+
+        public Task<IReadOnlyList<GenerationInputRecord>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<GenerationInputRecord>>(
+                Array.Empty<GenerationInputRecord>());
         }
     }
 }

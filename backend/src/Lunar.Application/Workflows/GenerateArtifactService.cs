@@ -14,6 +14,7 @@ public sealed class GenerateArtifactService
     private readonly CreateWorkflowExecutionService _createWorkflowExecutionService;
     private readonly StartWorkflowExecutionService _startWorkflowExecutionService;
     private readonly ExecuteWorkflowStepService _executeWorkflowStepService;
+    private readonly IGenerationInputRecordRepository _generationInputRecordRepository;
     private readonly ILogger<GenerateArtifactService> _logger;
 
     public GenerateArtifactService(
@@ -21,18 +22,21 @@ public sealed class GenerateArtifactService
         CreateWorkflowExecutionService createWorkflowExecutionService,
         StartWorkflowExecutionService startWorkflowExecutionService,
         ExecuteWorkflowStepService executeWorkflowStepService,
+        IGenerationInputRecordRepository generationInputRecordRepository,
         ILogger<GenerateArtifactService> logger)
     {
         ArgumentNullException.ThrowIfNull(workflowDefinitionRepository);
         ArgumentNullException.ThrowIfNull(createWorkflowExecutionService);
         ArgumentNullException.ThrowIfNull(startWorkflowExecutionService);
         ArgumentNullException.ThrowIfNull(executeWorkflowStepService);
+        ArgumentNullException.ThrowIfNull(generationInputRecordRepository);
         ArgumentNullException.ThrowIfNull(logger);
 
         _workflowDefinitionRepository = workflowDefinitionRepository;
         _createWorkflowExecutionService = createWorkflowExecutionService;
         _startWorkflowExecutionService = startWorkflowExecutionService;
         _executeWorkflowStepService = executeWorkflowStepService;
+        _generationInputRecordRepository = generationInputRecordRepository;
         _logger = logger;
     }
 
@@ -152,6 +156,31 @@ public sealed class GenerateArtifactService
             if (createActivity is not null)
             {
                 createActivity.SetTag(ApplicationTelemetry.WorkflowExecutionIdTag, executionId.Value.ToString());
+            }
+        }
+
+        if (input is TextPromptInput textPromptInput)
+        {
+            var inputRecord = new GenerationInputRecord(
+                executionId,
+                assetId,
+                textPromptInput);
+
+            var inputPersisted = await _generationInputRecordRepository.TryAddAsync(
+                inputRecord,
+                cancellationToken);
+
+            if (!inputPersisted)
+            {
+                if (activity is not null)
+                {
+                    activity.SetTag(ApplicationTelemetry.OperationOutcomeTag, ApplicationTelemetry.OutcomeFailure);
+                    activity.SetTag(ApplicationTelemetry.FailureStageTag, ApplicationTelemetry.StageGenerationInputPersistence);
+                    activity.SetStatus(ActivityStatusCode.Error);
+                }
+
+                return Result<GeneratedArtifact>.Failure(
+                    new GenerationInputPersistenceFailed(executionId));
             }
         }
 

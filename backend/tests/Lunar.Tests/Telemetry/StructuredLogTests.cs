@@ -189,6 +189,7 @@ public class StructuredLogTests
                 executor,
                 contentStore,
                 NullLogger<ExecuteWorkflowStepService>.Instance),
+            new InMemoryGenerationInputRecordRepository(),
             NullLogger<GenerateArtifactService>.Instance);
 
         var defaultService = new GenerateDefaultArtifactService(

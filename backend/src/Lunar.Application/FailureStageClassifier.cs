@@ -24,6 +24,8 @@ public static class FailureStageClassifier
 
             WorkflowExecutionPersistenceFailed => (ApplicationTelemetry.StageWorkflowExecutionCreation, null),
 
+            GenerationInputPersistenceFailed => (ApplicationTelemetry.StageGenerationInputPersistence, null),
+
             WorkflowExecutionCannotStart => (ApplicationTelemetry.StageWorkflowExecutionStart, null),
             WorkflowExecutionConcurrencyConflict => (ApplicationTelemetry.StageWorkflowExecutionStart, null),
 

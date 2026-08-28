@@ -161,6 +161,12 @@ export default function App() {
     setSelectedArtifact(artifact)
   }
 
+  const handleReusePrompt = () => {
+    const promptText = selectedArtifact?.generationInput?.prompt
+    if (promptText === undefined) return
+    setPrompt(promptText)
+  }
+
   const isBusy = uiState === 'creating' || uiState === 'generating'
   const hasAsset = assetId !== null
   const canGenerate =
@@ -320,6 +326,30 @@ export default function App() {
                     Download
                   </button>
                 </div>
+                {previewTarget && (
+                  <div className="lunar-prompt-provenance">
+                    <h4>Prompt used</h4>
+                    {previewTarget.generationInput ? (
+                      <>
+                        <p className="lunar-prompt-text">
+                          {previewTarget.generationInput.prompt}
+                        </p>
+                        <button
+                          type="button"
+                          className="lunar-button-secondary"
+                          onClick={handleReusePrompt}
+                          disabled={isBusy}
+                        >
+                          Reuse prompt
+                        </button>
+                      </>
+                    ) : (
+                      <p className="lunar-prompt-unavailable">
+                        Prompt unavailable for this artifact.
+                      </p>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <div className="lunar-preview-placeholder">

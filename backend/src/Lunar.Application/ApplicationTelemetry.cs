@@ -97,5 +97,6 @@ public static class ApplicationTelemetry
     public const string StageCapabilityExecution = "capability_execution";
     public const string StageArtifactContentPersistence = "artifact_content_persistence";
     public const string StageArtifactMetadataPersistence = "artifact_metadata_persistence";
+    public const string StageGenerationInputPersistence = "generation_input_persistence";
     public const string StageApplication = "application";
 }

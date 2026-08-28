@@ -46,6 +46,7 @@ public class GenerateArtifactServiceTests
                     new InMemoryWorkflowExecutionRepository(),
                     NullLogger<StartWorkflowExecutionService>.Instance),
                 CreateStubExecuteService(),
+                new InMemoryGenerationInputRecordRepository(),
                 NullLogger<GenerateArtifactService>.Instance));
     }
 
@@ -60,6 +61,7 @@ public class GenerateArtifactServiceTests
                     new InMemoryWorkflowExecutionRepository(),
                     NullLogger<StartWorkflowExecutionService>.Instance),
                 CreateStubExecuteService(),
+                new InMemoryGenerationInputRecordRepository(),
                 NullLogger<GenerateArtifactService>.Instance));
     }
 
@@ -76,6 +78,7 @@ public class GenerateArtifactServiceTests
                     NullLogger<CreateWorkflowExecutionService>.Instance),
                 null!,
                 CreateStubExecuteService(),
+                new InMemoryGenerationInputRecordRepository(),
                 NullLogger<GenerateArtifactService>.Instance));
     }
 
@@ -93,6 +96,26 @@ public class GenerateArtifactServiceTests
                 new StartWorkflowExecutionService(
                     new InMemoryWorkflowExecutionRepository(),
                     NullLogger<StartWorkflowExecutionService>.Instance),
+                null!,
+                new InMemoryGenerationInputRecordRepository(),
+                NullLogger<GenerateArtifactService>.Instance));
+    }
+
+    [Fact]
+    public void Constructor_NullGenerationInputRecordRepository_ShouldThrow()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new GenerateArtifactService(
+                new InMemoryWorkflowDefinitionRepository(),
+                new CreateWorkflowExecutionService(
+                    new InMemoryAssetRepository(),
+                    new InMemoryWorkflowDefinitionRepository(),
+                    new InMemoryWorkflowExecutionRepository(),
+                    NullLogger<CreateWorkflowExecutionService>.Instance),
+                new StartWorkflowExecutionService(
+                    new InMemoryWorkflowExecutionRepository(),
+                    NullLogger<StartWorkflowExecutionService>.Instance),
+                CreateStubExecuteService(),
                 null!,
                 NullLogger<GenerateArtifactService>.Instance));
     }
@@ -577,13 +600,196 @@ public class GenerateArtifactServiceTests
     }
 
 
+    [Fact]
+    public async Task GenerateAsync_Success_PersistsGenerationInputRecord()
+    {
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        await definitionRepository.TryAddAsync(CreateDefinition(SharedDefinitionId, 1));
+
+        var assetRepository = new InMemoryAssetRepository();
+        await assetRepository.TryAddAsync(new Asset(SharedAssetId, "Test", AssetType.Character));
+
+        var inputRepository = new InMemoryGenerationInputRecordRepository();
+        var executor = new TrackingCapabilityExecutor();
+        var service = CreateService(
+            assetRepository: assetRepository,
+            definitionRepository: definitionRepository,
+            executor: executor,
+            generationInputRecordRepository: inputRepository);
+
+        var result = await service.GenerateAsync(
+            SharedAssetId,
+            SharedDefinitionId,
+            1,
+            1,
+            SharedInput);
+
+        Assert.True(result.IsSuccess);
+
+        var records = await inputRepository.GetByAssetIdAsync(SharedAssetId);
+        Assert.Single(records);
+        var record = records[0];
+        Assert.Equal(result.Value!.WorkflowExecutionId, record.WorkflowExecutionId);
+        Assert.Equal(SharedAssetId, record.AssetId);
+        Assert.Equal(SharedInput.Prompt, record.Prompt.Prompt);
+    }
+
+
+    [Fact]
+    public async Task GenerateAsync_Success_PreservesExactPromptWithInternalWhitespace()
+    {
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        await definitionRepository.TryAddAsync(CreateDefinition(SharedDefinitionId, 1));
+
+        var assetRepository = new InMemoryAssetRepository();
+        await assetRepository.TryAddAsync(new Asset(SharedAssetId, "Test", AssetType.Character));
+
+        var inputRepository = new InMemoryGenerationInputRecordRepository();
+        var executor = new TrackingCapabilityExecutor();
+        var service = CreateService(
+            assetRepository: assetRepository,
+            definitionRepository: definitionRepository,
+            executor: executor,
+            generationInputRecordRepository: inputRepository);
+
+        var promptWithWhitespace = new TextPromptInput("  a sword  with  spaces  ");
+        await service.GenerateAsync(
+            SharedAssetId,
+            SharedDefinitionId,
+            1,
+            1,
+            promptWithWhitespace);
+
+        var records = await inputRepository.GetByAssetIdAsync(SharedAssetId);
+        Assert.Single(records);
+        Assert.Equal("  a sword  with  spaces  ", records[0].Prompt.Prompt);
+    }
+
+
+    [Fact]
+    public async Task GenerateAsync_PersistenceFailure_ReturnsGenerationInputPersistenceFailed()
+    {
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        await definitionRepository.TryAddAsync(CreateDefinition(SharedDefinitionId, 1));
+
+        var assetRepository = new InMemoryAssetRepository();
+        await assetRepository.TryAddAsync(new Asset(SharedAssetId, "Test", AssetType.Character));
+
+        var inputRepository = new RejectingGenerationInputRecordRepository();
+        var executor = new TrackingCapabilityExecutor();
+        var service = CreateService(
+            assetRepository: assetRepository,
+            definitionRepository: definitionRepository,
+            executor: executor,
+            generationInputRecordRepository: inputRepository);
+
+        var result = await service.GenerateAsync(
+            SharedAssetId,
+            SharedDefinitionId,
+            1,
+            1,
+            SharedInput);
+
+        Assert.True(result.IsFailure);
+        Assert.IsType<GenerationInputPersistenceFailed>(result.Error);
+    }
+
+
+    [Fact]
+    public async Task GenerateAsync_PersistenceFailure_DoesNotCallExecutor()
+    {
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        await definitionRepository.TryAddAsync(CreateDefinition(SharedDefinitionId, 1));
+
+        var assetRepository = new InMemoryAssetRepository();
+        await assetRepository.TryAddAsync(new Asset(SharedAssetId, "Test", AssetType.Character));
+
+        var inputRepository = new RejectingGenerationInputRecordRepository();
+        var executor = new TrackingCapabilityExecutor();
+        var service = CreateService(
+            assetRepository: assetRepository,
+            definitionRepository: definitionRepository,
+            executor: executor,
+            generationInputRecordRepository: inputRepository);
+
+        await service.GenerateAsync(
+            SharedAssetId,
+            SharedDefinitionId,
+            1,
+            1,
+            SharedInput);
+
+        Assert.Equal(0, executor.CallCount);
+    }
+
+
+    [Fact]
+    public async Task GenerateAsync_PrevalidationFailure_DoesNotPersistGenerationInput()
+    {
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        await definitionRepository.TryAddAsync(CreateDefinition(SharedDefinitionId, 1));
+
+        var assetRepository = new InMemoryAssetRepository();
+        await assetRepository.TryAddAsync(new Asset(SharedAssetId, "Test", AssetType.Character));
+
+        var inputRepository = new TrackingGenerationInputRecordRepository();
+        var service = CreateService(
+            assetRepository: assetRepository,
+            definitionRepository: definitionRepository,
+            generationInputRecordRepository: inputRepository);
+
+        await service.GenerateAsync(
+            SharedAssetId,
+            SharedDefinitionId,
+            1,
+            99,
+            SharedInput);
+
+        Assert.Equal(0, inputRepository.TryAddCallCount);
+    }
+
+
+    [Fact]
+    public async Task GenerateAsync_ExecuteFailure_RetainsGenerationInputRecord()
+    {
+        var definitionRepository = new InMemoryWorkflowDefinitionRepository();
+        await definitionRepository.TryAddAsync(CreateDefinition(SharedDefinitionId, 1));
+
+        var assetRepository = new InMemoryAssetRepository();
+        await assetRepository.TryAddAsync(new Asset(SharedAssetId, "Test", AssetType.Character));
+
+        var inputRepository = new InMemoryGenerationInputRecordRepository();
+        var executor = new TrackingCapabilityExecutor();
+        executor.Failure = new CapabilityExecutionFailure(CapabilityExecutionFailureKind.Rejected);
+        var service = CreateService(
+            assetRepository: assetRepository,
+            definitionRepository: definitionRepository,
+            executor: executor,
+            generationInputRecordRepository: inputRepository);
+
+        var result = await service.GenerateAsync(
+            SharedAssetId,
+            SharedDefinitionId,
+            1,
+            1,
+            SharedInput);
+
+        Assert.True(result.IsFailure);
+
+        var records = await inputRepository.GetByAssetIdAsync(SharedAssetId);
+        Assert.Single(records);
+        Assert.Equal(SharedInput.Prompt, records[0].Prompt.Prompt);
+    }
+
+
     private static GenerateArtifactService CreateService(
         IAssetRepository? assetRepository = null,
         IWorkflowDefinitionRepository? definitionRepository = null,
         IWorkflowExecutionRepository? executionRepository = null,
         ICapabilityExecutor? executor = null,
         IArtifactRepository? artifactRepository = null,
-        IArtifactContentStore? contentStore = null)
+        IArtifactContentStore? contentStore = null,
+        IGenerationInputRecordRepository? generationInputRecordRepository = null)
     {
         assetRepository ??= new InMemoryAssetRepository();
         definitionRepository ??= new InMemoryWorkflowDefinitionRepository();
@@ -591,6 +797,7 @@ public class GenerateArtifactServiceTests
         executor ??= new TrackingCapabilityExecutor();
         artifactRepository ??= new InMemoryArtifactRepository();
         contentStore ??= new InMemoryArtifactContentStore();
+        generationInputRecordRepository ??= new InMemoryGenerationInputRecordRepository();
 
         var createService = new CreateWorkflowExecutionService(
             assetRepository, definitionRepository, executionRepository,
@@ -607,6 +814,7 @@ public class GenerateArtifactServiceTests
 
         return new GenerateArtifactService(
             definitionRepository, createService, startService, executeService,
+            generationInputRecordRepository,
             NullLogger<GenerateArtifactService>.Instance);
     }
 
@@ -743,6 +951,48 @@ public class GenerateArtifactServiceTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(_store.Remove(artifactId));
+        }
+    }
+
+
+    private sealed class RejectingGenerationInputRecordRepository : IGenerationInputRecordRepository
+    {
+        public Task<bool> TryAddAsync(
+            GenerationInputRecord record,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(false);
+        }
+
+        public Task<IReadOnlyList<GenerationInputRecord>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<GenerationInputRecord>>(
+                Array.Empty<GenerationInputRecord>());
+        }
+    }
+
+
+    private sealed class TrackingGenerationInputRecordRepository : IGenerationInputRecordRepository
+    {
+        private readonly InMemoryGenerationInputRecordRepository _inner = new();
+
+        public int TryAddCallCount { get; private set; }
+
+        public Task<bool> TryAddAsync(
+            GenerationInputRecord record,
+            CancellationToken cancellationToken = default)
+        {
+            TryAddCallCount++;
+            return _inner.TryAddAsync(record, cancellationToken);
+        }
+
+        public Task<IReadOnlyList<GenerationInputRecord>> GetByAssetIdAsync(
+            AssetId assetId,
+            CancellationToken cancellationToken = default)
+        {
+            return _inner.GetByAssetIdAsync(assetId, cancellationToken);
         }
     }
 }

@@ -217,6 +217,7 @@ public class GenerateDefaultArtifactServiceTests
                 executionRepository, definitionRepository,
                 artifactRepository, executor, contentStore,
                 NullLogger<ExecuteWorkflowStepService>.Instance),
+            new InMemoryGenerationInputRecordRepository(),
             NullLogger<GenerateArtifactService>.Instance);
 
         return new GenerateDefaultArtifactService(
@@ -243,6 +244,7 @@ public class GenerateDefaultArtifactServiceTests
                 new TrackingExecutor(),
                 new InMemoryContentStore(),
                 NullLogger<ExecuteWorkflowStepService>.Instance),
+            new InMemoryGenerationInputRecordRepository(),
             NullLogger<GenerateArtifactService>.Instance);
     }
 

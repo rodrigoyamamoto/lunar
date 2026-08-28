@@ -13,6 +13,7 @@ current task, then expand the survey if this guide is stale or incomplete.
 - Baseline validation: build/test passed, 693 tests, 0 warnings
 - Current asset-generation-gallery working-tree validation: 725 tests, 0 warnings
 - Current controlled-observability-foundation working-tree validation: 764 tests, 0 warnings
+- Current generation-input-provenance working-tree validation: 806 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 
@@ -109,7 +110,7 @@ Still scaffolding or intentionally absent:
 - workflow scheduling, retries, and orchestration engine;
 - workflow authoring UI or durable workflow persistence (the built-in text-to-image workflow is runtime bootstrap);
 - capability-to-executor routing (the single Cloudflare executor handles all capabilities);
-- generation input provenance (prompt text is not persisted to Artifact metadata; historical prompt provenance is future work);
+- generation input provenance (`GenerationInputRecord` persists the exact text prompt per `WorkflowExecution`; `IGenerationInputRecordRepository` and `InMemoryGenerationInputRecordRepository` provide insert-only Asset-scoped provenance; `GenerateArtifactService` persists provenance after execution create and before execution start/provider call; `ListAssetArtifactsService` composes `AssetArtifactHistoryItem` pairing each `Artifact` with its optional `GenerationInputRecord` via `SourceExecutionId`; `GET /api/assets/{assetId}/artifacts` returns `generationInput` with the exact prompt; frontend shows "Prompt used" and "Reuse prompt" for selected Artifacts; prompt text is excluded from all operational telemetry);
 - reference image / image-to-image generation;
 - observability foundation (OpenTelemetry/collector not yet introduced; controlled diagnostics remain planned);
 - authentication, authorization, and user accounts;

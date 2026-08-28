@@ -223,6 +223,7 @@ public class MetricTests
                 executor,
                 contentStore,
                 NullLogger<ExecuteWorkflowStepService>.Instance),
+            new InMemoryGenerationInputRecordRepository(),
             NullLogger<GenerateArtifactService>.Instance);
 
         return new GenerateDefaultArtifactService(

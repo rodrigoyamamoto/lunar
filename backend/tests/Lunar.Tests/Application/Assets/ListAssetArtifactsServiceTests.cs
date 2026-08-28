@@ -2,6 +2,7 @@ using Lunar.Application.Assets;
 using Lunar.Application.Errors;
 using Lunar.Core.Artifacts;
 using Lunar.Core.Assets;
+using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -14,7 +15,7 @@ public class ListAssetArtifactsServiceTests
     public void Constructor_NullAssetRepository_ShouldThrow()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new ListAssetArtifactsService(null!, new InMemoryArtifactRepository(), NullLogger<ListAssetArtifactsService>.Instance));
+            new ListAssetArtifactsService(null!, new InMemoryArtifactRepository(), new InMemoryGenerationInputRecordRepository(), NullLogger<ListAssetArtifactsService>.Instance));
     }
 
 
@@ -22,7 +23,15 @@ public class ListAssetArtifactsServiceTests
     public void Constructor_NullArtifactRepository_ShouldThrow()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new ListAssetArtifactsService(new InMemoryAssetRepository(), null!, NullLogger<ListAssetArtifactsService>.Instance));
+            new ListAssetArtifactsService(new InMemoryAssetRepository(), null!, new InMemoryGenerationInputRecordRepository(), NullLogger<ListAssetArtifactsService>.Instance));
+    }
+
+
+    [Fact]
+    public void Constructor_NullGenerationInputRecordRepository_ShouldThrow()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            new ListAssetArtifactsService(new InMemoryAssetRepository(), new InMemoryArtifactRepository(), null!, NullLogger<ListAssetArtifactsService>.Instance));
     }
 
 
@@ -32,6 +41,7 @@ public class ListAssetArtifactsServiceTests
         var service = new ListAssetArtifactsService(
             new InMemoryAssetRepository(),
             new InMemoryArtifactRepository(),
+            new InMemoryGenerationInputRecordRepository(),
             NullLogger<ListAssetArtifactsService>.Instance);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -45,6 +55,7 @@ public class ListAssetArtifactsServiceTests
         var service = new ListAssetArtifactsService(
             new InMemoryAssetRepository(),
             new InMemoryArtifactRepository(),
+            new InMemoryGenerationInputRecordRepository(),
             NullLogger<ListAssetArtifactsService>.Instance);
 
         var result = await service.ListAsync(AssetId.New());
@@ -59,7 +70,7 @@ public class ListAssetArtifactsServiceTests
     {
         var assetRepository = new InMemoryAssetRepository();
         var artifactRepository = new TrackingArtifactRepository();
-        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, NullLogger<ListAssetArtifactsService>.Instance);
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, new InMemoryGenerationInputRecordRepository(), NullLogger<ListAssetArtifactsService>.Instance);
 
         await service.ListAsync(AssetId.New());
 
@@ -77,6 +88,7 @@ public class ListAssetArtifactsServiceTests
         var service = new ListAssetArtifactsService(
             assetRepository,
             new InMemoryArtifactRepository(),
+            new InMemoryGenerationInputRecordRepository(),
             NullLogger<ListAssetArtifactsService>.Instance);
 
         var result = await service.ListAsync(assetId);
@@ -99,13 +111,13 @@ public class ListAssetArtifactsServiceTests
         await artifactRepository.TryAddAsync(CreateArtifact(assetId: assetB, name: "B1"));
         await artifactRepository.TryAddAsync(CreateArtifact(assetId: assetA, name: "A2"));
 
-        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, NullLogger<ListAssetArtifactsService>.Instance);
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, new InMemoryGenerationInputRecordRepository(), NullLogger<ListAssetArtifactsService>.Instance);
 
         var result = await service.ListAsync(assetA);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Count);
-        Assert.All(result.Value!, a => Assert.Equal(assetA, a.AssetId));
+        Assert.All(result.Value!, a => Assert.Equal(assetA, a.Artifact.AssetId));
     }
 
 
@@ -125,14 +137,14 @@ public class ListAssetArtifactsServiceTests
         var newArtifact = CreateArtifact(assetId: assetId, name: "New");
         await artifactRepository.TryAddAsync(newArtifact);
 
-        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, NullLogger<ListAssetArtifactsService>.Instance);
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, new InMemoryGenerationInputRecordRepository(), NullLogger<ListAssetArtifactsService>.Instance);
 
         var result = await service.ListAsync(assetId);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Count);
-        Assert.Equal("New", result.Value[0].Name);
-        Assert.Equal("Old", result.Value[1].Name);
+        Assert.Equal("New", result.Value[0].Artifact.Name);
+        Assert.Equal("Old", result.Value[1].Artifact.Name);
     }
 
 
@@ -150,7 +162,7 @@ public class ListAssetArtifactsServiceTests
 
         var artifactRepository = new FixedReturnArtifactRepository(
             new[] { lowerArtifact, higherArtifact });
-        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, NullLogger<ListAssetArtifactsService>.Instance);
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, new InMemoryGenerationInputRecordRepository(), NullLogger<ListAssetArtifactsService>.Instance);
 
         var result = await service.ListAsync(assetId);
 
@@ -159,8 +171,8 @@ public class ListAssetArtifactsServiceTests
 
         for (var i = 1; i < result.Value!.Count; i++)
         {
-            var prev = result.Value[i - 1];
-            var curr = result.Value[i];
+            var prev = result.Value[i - 1].Artifact;
+            var curr = result.Value[i].Artifact;
             var prevKey = (prev.CreatedAt, prev.Id.Value);
             var currKey = (curr.CreatedAt, curr.Id.Value);
             Assert.True(prevKey.CompareTo(currKey) >= 0,
@@ -180,6 +192,7 @@ public class ListAssetArtifactsServiceTests
         var service = new ListAssetArtifactsService(
             assetRepository,
             new InMemoryArtifactRepository(),
+            new InMemoryGenerationInputRecordRepository(),
             NullLogger<ListAssetArtifactsService>.Instance);
 
         using var cts = new CancellationTokenSource();
@@ -196,6 +209,7 @@ public class ListAssetArtifactsServiceTests
         var service = new ListAssetArtifactsService(
             new ThrowingAssetRepository(),
             new InMemoryArtifactRepository(),
+            new InMemoryGenerationInputRecordRepository(),
             NullLogger<ListAssetArtifactsService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -213,10 +227,151 @@ public class ListAssetArtifactsServiceTests
         var service = new ListAssetArtifactsService(
             assetRepository,
             new ThrowingArtifactRepository(),
+            new InMemoryGenerationInputRecordRepository(),
             NullLogger<ListAssetArtifactsService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ListAsync(assetId));
+    }
+
+
+    [Fact]
+    public async Task ListAsync_ArtifactWithMatchingGenerationInput_AssociatesExactPrompt()
+    {
+        var assetRepository = new InMemoryAssetRepository();
+        var artifactRepository = new InMemoryArtifactRepository();
+        var inputRepository = new InMemoryGenerationInputRecordRepository();
+        var assetId = AssetId.New();
+        await assetRepository.TryAddAsync(new Asset(assetId, "Test", AssetType.Character));
+
+        var executionId = WorkflowExecutionId.New();
+        await artifactRepository.TryAddAsync(
+            CreateArtifact(assetId: assetId, name: "A1", sourceExecutionId: executionId));
+
+        var prompt = new TextPromptInput("a ruined obsidian sword with  internal  whitespace");
+        await inputRepository.TryAddAsync(
+            new GenerationInputRecord(executionId, assetId, prompt));
+
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, inputRepository, NullLogger<ListAssetArtifactsService>.Instance);
+
+        var result = await service.ListAsync(assetId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!);
+        var item = result.Value![0];
+        Assert.NotNull(item.GenerationInput);
+        Assert.Equal(executionId, item.GenerationInput!.WorkflowExecutionId);
+        Assert.Equal(assetId, item.GenerationInput!.AssetId);
+        Assert.Equal("a ruined obsidian sword with  internal  whitespace", item.GenerationInput!.Prompt.Prompt);
+    }
+
+
+    [Fact]
+    public async Task ListAsync_ArtifactWithNullSourceExecutionId_HasNullGenerationInput()
+    {
+        var assetRepository = new InMemoryAssetRepository();
+        var artifactRepository = new InMemoryArtifactRepository();
+        var assetId = AssetId.New();
+        await assetRepository.TryAddAsync(new Asset(assetId, "Test", AssetType.Character));
+
+        await artifactRepository.TryAddAsync(
+            CreateArtifact(assetId: assetId, name: "A1", sourceExecutionId: null));
+
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, new InMemoryGenerationInputRecordRepository(), NullLogger<ListAssetArtifactsService>.Instance);
+
+        var result = await service.ListAsync(assetId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!);
+        Assert.Null(result.Value![0].GenerationInput);
+    }
+
+
+    [Fact]
+    public async Task ListAsync_ArtifactWithSourceExecutionIdButMissingRecord_HasNullGenerationInput()
+    {
+        var assetRepository = new InMemoryAssetRepository();
+        var artifactRepository = new InMemoryArtifactRepository();
+        var assetId = AssetId.New();
+        await assetRepository.TryAddAsync(new Asset(assetId, "Test", AssetType.Character));
+
+        var executionId = WorkflowExecutionId.New();
+        await artifactRepository.TryAddAsync(
+            CreateArtifact(assetId: assetId, name: "A1", sourceExecutionId: executionId));
+
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, new InMemoryGenerationInputRecordRepository(), NullLogger<ListAssetArtifactsService>.Instance);
+
+        var result = await service.ListAsync(assetId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!);
+        Assert.Null(result.Value![0].GenerationInput);
+    }
+
+
+    [Fact]
+    public async Task ListAsync_MultipleArtifacts_MapToTheirOwnPrompts()
+    {
+        var assetRepository = new InMemoryAssetRepository();
+        var artifactRepository = new InMemoryArtifactRepository();
+        var inputRepository = new InMemoryGenerationInputRecordRepository();
+        var assetId = AssetId.New();
+        await assetRepository.TryAddAsync(new Asset(assetId, "Test", AssetType.Character));
+
+        var executionA = WorkflowExecutionId.New();
+        var executionB = WorkflowExecutionId.New();
+        await artifactRepository.TryAddAsync(
+            CreateArtifact(assetId: assetId, name: "A", sourceExecutionId: executionA));
+        await artifactRepository.TryAddAsync(
+            CreateArtifact(assetId: assetId, name: "B", sourceExecutionId: executionB));
+
+        await inputRepository.TryAddAsync(
+            new GenerationInputRecord(executionA, assetId, new TextPromptInput("prompt A")));
+        await inputRepository.TryAddAsync(
+            new GenerationInputRecord(executionB, assetId, new TextPromptInput("prompt B")));
+
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, inputRepository, NullLogger<ListAssetArtifactsService>.Instance);
+
+        var result = await service.ListAsync(assetId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Count);
+
+        var itemA = result.Value!.Single(i => i.Artifact.Name == "A");
+        var itemB = result.Value!.Single(i => i.Artifact.Name == "B");
+        Assert.Equal("prompt A", itemA.GenerationInput!.Prompt.Prompt);
+        Assert.Equal("prompt B", itemB.GenerationInput!.Prompt.Prompt);
+    }
+
+
+    [Fact]
+    public async Task ListAsync_InputRecordForAnotherAsset_NeverAttached()
+    {
+        var assetRepository = new InMemoryAssetRepository();
+        var artifactRepository = new InMemoryArtifactRepository();
+        var inputRepository = new InMemoryGenerationInputRecordRepository();
+        var assetA = AssetId.New();
+        var assetB = AssetId.New();
+        await assetRepository.TryAddAsync(new Asset(assetA, "A", AssetType.Character));
+        await assetRepository.TryAddAsync(new Asset(assetB, "B", AssetType.Weapon));
+
+        var executionA = WorkflowExecutionId.New();
+        var executionB = WorkflowExecutionId.New();
+        await artifactRepository.TryAddAsync(
+            CreateArtifact(assetId: assetA, name: "A1", sourceExecutionId: executionA));
+        await artifactRepository.TryAddAsync(
+            CreateArtifact(assetId: assetB, name: "B1", sourceExecutionId: executionB));
+
+        await inputRepository.TryAddAsync(
+            new GenerationInputRecord(executionB, assetB, new TextPromptInput("prompt for B")));
+
+        var service = new ListAssetArtifactsService(assetRepository, artifactRepository, inputRepository, NullLogger<ListAssetArtifactsService>.Instance);
+
+        var result = await service.ListAsync(assetA);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!);
+        Assert.Null(result.Value![0].GenerationInput);
     }
 
 

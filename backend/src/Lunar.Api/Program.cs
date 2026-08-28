@@ -68,6 +68,7 @@ builder.Services.AddSingleton<IAssetRepository, InMemoryAssetRepository>();
 builder.Services.AddSingleton<IWorkflowDefinitionRepository, InMemoryWorkflowDefinitionRepository>();
 builder.Services.AddSingleton<IWorkflowExecutionRepository, InMemoryWorkflowExecutionRepository>();
 builder.Services.AddSingleton<IArtifactRepository, InMemoryArtifactRepository>();
+builder.Services.AddSingleton<IGenerationInputRecordRepository, InMemoryGenerationInputRecordRepository>();
 
 builder.Services.AddSingleton<IArtifactContentStore>(sp =>
 {

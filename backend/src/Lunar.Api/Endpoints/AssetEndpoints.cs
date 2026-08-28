@@ -83,14 +83,21 @@ public static class AssetEndpoints
         var artifacts = result.Value!;
 
         var response = artifacts
-            .Select(artifact => new ArtifactSummaryResponse
+            .Select(item => new ArtifactSummaryResponse
             {
-                ArtifactId = artifact.Id.Value,
-                AssetId = artifact.AssetId.Value,
-                ArtifactName = artifact.Name,
-                ArtifactType = artifact.Type.ToString(),
-                CreatedAt = artifact.CreatedAt,
-                ContentUrl = $"/api/artifacts/{artifact.Id.Value}/content"
+                ArtifactId = item.Artifact.Id.Value,
+                AssetId = item.Artifact.AssetId.Value,
+                ArtifactName = item.Artifact.Name,
+                ArtifactType = item.Artifact.Type.ToString(),
+                CreatedAt = item.Artifact.CreatedAt,
+                ContentUrl = $"/api/artifacts/{item.Artifact.Id.Value}/content",
+                GenerationInput = item.GenerationInput is { } input
+                    ? new GenerationInputResponse
+                    {
+                        WorkflowExecutionId = input.WorkflowExecutionId.Value,
+                        Prompt = input.Prompt.Prompt
+                    }
+                    : null
             })
             .ToList();
 

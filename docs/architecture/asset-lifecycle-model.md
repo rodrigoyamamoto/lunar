@@ -129,6 +129,51 @@ These two dimensions are deliberately independent. An Artifact may have
 a `SourceExecutionId` without any `SourceArtifactIds`, or
 `SourceArtifactIds` without a `SourceExecutionId`, or both, or neither.
 
+## Generation Input Provenance
+
+The exact user generation input (currently the text prompt) is persisted
+as first-class provenance of the **WorkflowExecution**, not as an
+intrinsic property of the Artifact.
+
+`GenerationInputRecord` is an immutable Core domain model that captures:
+
+-   `WorkflowExecutionId` — the execution the input belongs to
+-   `AssetId` — the Asset the execution was for
+-   `TextPromptInput` — the exact prompt (no trimming, whitespace
+    collapse, case transformation, or newline normalization)
+-   `CreatedAt` — when the record was captured
+
+`IGenerationInputRecordRepository` provides insert-only
+(`TryAddAsync`) and Asset-scoped query (`GetByAssetIdAsync`) operations.
+The in-memory implementation is
+`InMemoryGenerationInputRecordRepository`, consistent with the current
+metadata repositories. Restart durability is not claimed.
+
+`GenerateArtifactService` persists the `GenerationInputRecord` after
+the `WorkflowExecution` is created and before it is started or the
+provider is called. If provenance insertion fails
+(`TryAddAsync` returns `false`), the service returns
+`GenerationInputPersistenceFailed` and does not start the execution or
+call the provider.
+
+Once persisted, the generation input record is historical truth about an
+attempted generation. Provider failures, content persistence failures,
+metadata persistence failures, and cancellation do **not** delete the
+record.
+
+The gallery composition (`ListAssetArtifactsService`) associates each
+`Artifact` with its optional `GenerationInputRecord` via
+`Artifact.SourceExecutionId`. An Artifact with `null`
+`SourceExecutionId`, or whose `SourceExecutionId` has no matching
+record, has `null` generation input. Missing provenance does not
+invalidate an Artifact.
+
+The prompt is user-owned product data and is returned to the product
+client via `GET /api/assets/{assetId}/artifacts` in the
+`generationInput` field. Prompt text is **excluded** from all
+operational telemetry (logs, activities, metrics). Only `PromptLength`
+appears in telemetry.
+
 ## Lineage Semantics
 
 `SourceArtifactIds` records only **direct** provenance. For a chain:

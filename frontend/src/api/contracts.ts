@@ -26,6 +26,11 @@ export interface GenerationResponse {
   contentUrl: string
 }
 
+export interface GenerationInput {
+  workflowExecutionId: string
+  prompt: string
+}
+
 export interface ArtifactSummary {
   artifactId: string
   assetId: string
@@ -33,6 +38,7 @@ export interface ArtifactSummary {
   artifactType: string
   createdAt: string
   contentUrl: string
+  generationInput: GenerationInput | null
 }
 
 export interface ApiErrorResponse {

@@ -177,6 +177,11 @@ logs. Prompt content must not appear in:
 - Activity tags
 - Metric tags
 
+This rule applies even though the exact prompt is now persisted as
+product provenance via `GenerationInputRecord` and returned to the
+product client via the gallery API. The product/API boundary may return
+the prompt to the user; the operational telemetry boundary must not.
+
 ### TraceId/SpanId correlation
 
 The ASP.NET Core logging framework is configured with
@@ -251,6 +256,11 @@ stage=artifact_content_persistence
 errorType=ArtifactContentPersistenceFailed
 durationMs=...
 ```
+
+When generation-input provenance persistence fails, the stage is
+`generation_input_persistence` and the error type is
+`GenerationInputPersistenceFailed`. The prompt is never included in
+the failure log.
 
 ## Provider behavior and privacy boundaries
 

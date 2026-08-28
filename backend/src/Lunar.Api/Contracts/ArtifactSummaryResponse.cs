@@ -13,4 +13,6 @@ public sealed class ArtifactSummaryResponse
     public required DateTimeOffset CreatedAt { get; init; }
 
     public required string ContentUrl { get; init; }
+
+    public GenerationInputResponse? GenerationInput { get; init; }
 }

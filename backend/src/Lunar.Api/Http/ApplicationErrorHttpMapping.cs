@@ -115,6 +115,14 @@ public static class ApplicationErrorHttpMapping
                     Message = error.Message
                 }),
 
+            GenerationInputPersistenceFailed => new HttpErrorResult(
+                StatusCodes.Status503ServiceUnavailable,
+                new Contracts.ApiErrorResponse
+                {
+                    Code = "generation_input_persistence_failed",
+                    Message = error.Message
+                }),
+
             WorkflowStepExecutionFailed stepFailed => MapStepExecutionFailure(stepFailed),
 
             _ => new HttpErrorResult(

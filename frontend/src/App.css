@@ -413,3 +413,34 @@ body {
     height: 75px;
   }
 }
+
+.lunar-prompt-provenance {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--lunar-surface);
+  border: 1px solid var(--lunar-border);
+  border-radius: var(--lunar-radius);
+}
+
+.lunar-prompt-provenance h4 {
+  font-size: 0.8rem;
+  color: var(--lunar-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.lunar-prompt-text {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--lunar-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 0.75rem;
+}
+
+.lunar-prompt-unavailable {
+  font-size: 0.85rem;
+  color: var(--lunar-text-muted);
+  font-style: italic;
+}
