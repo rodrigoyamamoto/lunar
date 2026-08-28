@@ -50,6 +50,31 @@ public class ProviderTelemetryTests
 
 
     [Fact]
+    public async Task RealProvider_Success_DoesNotClaimFakeUsage()
+    {
+        // Cloudflare Workers AI image generation API does not return per-request
+        // Neuron usage. The provider log must not fabricate usage data.
+        var provider = new CaptureLoggerProvider();
+        var handler = new FakeHttpMessageHandler(_ => CreateSuccessResponse(JpegBytes));
+        var executor = CreateExecutor(handler, provider);
+
+        await executor.ExecuteAsync(CreateRequest("test prompt"));
+
+        var allMessages = string.Join("\n", provider.Entries.Select(e => e.Message));
+        var allProperties = string.Join("\n", provider.Entries
+            .SelectMany(e => e.Properties.Values)
+            .Select(v => v?.ToString() ?? string.Empty));
+        var combined = allMessages + "\n" + allProperties;
+
+        Assert.DoesNotContain("CreditsSpent", combined, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ActualCost", combined, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ActualNeurons", combined, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("UsageNeurons", combined, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("EstimatedNeurons", combined, StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    [Fact]
     public async Task RealProvider_Success_EmitsProviderActivityWithOkStatus()
     {
         using var listener = new TestActivityListener(

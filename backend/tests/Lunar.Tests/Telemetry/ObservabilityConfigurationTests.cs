@@ -7,6 +7,7 @@ using Lunar.Core.Capabilities;
 using Lunar.Core.Workflows;
 using Lunar.Infrastructure.FileSystem;
 using Lunar.Infrastructure.Persistence;
+using Lunar.Tests.Api;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
@@ -30,22 +31,34 @@ public class ObservabilityConfigurationTests
 
 
     [Fact]
-    public void SimpleConsoleFormatterOptions_IncludesScopes()
+    public void RealHost_SimpleConsoleFormatterOptions_IncludesScopes()
     {
-        // Verify the named Simple console formatter options used in Program.cs
-        var services = new ServiceCollection();
-        services.Configure<SimpleConsoleFormatterOptions>(
-            ConsoleFormatterNames.Simple,
-            options =>
-            {
-                options.IncludeScopes = true;
-            });
+        // Resolve the effective formatter options from the actual Lunar application host.
+        // The Simple console formatter reads IOptionsMonitor<SimpleConsoleFormatterOptions>.CurrentValue
+        // (default/unnamed options), not named options. This test proves the real host
+        // has IncludeScopes=true on the options the formatter actually consumes.
+        using var factory = new LunarApiFactory();
+        using var scope = factory.Services.CreateScope();
+        var optionsMonitor = scope.ServiceProvider
+            .GetRequiredService<IOptionsMonitor<SimpleConsoleFormatterOptions>>();
 
-        var provider = services.BuildServiceProvider();
-        var optionsMonitor = provider.GetRequiredService<IOptionsMonitor<SimpleConsoleFormatterOptions>>();
-        var formatterOptions = optionsMonitor.Get(ConsoleFormatterNames.Simple);
+        Assert.True(optionsMonitor.CurrentValue.IncludeScopes);
+    }
 
-        Assert.True(formatterOptions.IncludeScopes);
+
+    [Fact]
+    public void RealHost_ActivityTrackingOptions_ContainsTraceIdAndSpanId()
+    {
+        // Resolve the effective ActivityTrackingOptions from the actual Lunar application host.
+        using var factory = new LunarApiFactory();
+        using var scope = factory.Services.CreateScope();
+        var optionsMonitor = scope.ServiceProvider
+            .GetRequiredService<IOptionsMonitor<LoggerFactoryOptions>>();
+
+        var trackingOptions = optionsMonitor.CurrentValue.ActivityTrackingOptions;
+
+        Assert.True(trackingOptions.HasFlag(ActivityTrackingOptions.TraceId));
+        Assert.True(trackingOptions.HasFlag(ActivityTrackingOptions.SpanId));
     }
 
 

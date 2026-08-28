@@ -12,7 +12,7 @@ current task, then expand the survey if this guide is stale or incomplete.
 - Survey baseline: `5553d26` (`feat: add first Lunar product generation loop`)
 - Baseline validation: build/test passed, 693 tests, 0 warnings
 - Current asset-generation-gallery working-tree validation: 725 tests, 0 warnings
-- Current controlled-observability-foundation working-tree validation: 762 tests, 0 warnings
+- Current controlled-observability-foundation working-tree validation: 764 tests, 0 warnings
 - Repository root: repository root; paths in this document are repository-relative
 - Main branch: `master`
 

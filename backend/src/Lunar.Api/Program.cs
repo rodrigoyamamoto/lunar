@@ -12,7 +12,6 @@ using Lunar.Infrastructure.Persistence;
 using Lunar.Infrastructure.Providers.Cloudflare;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,12 +35,10 @@ builder.Logging.Configure(options =>
         | ActivityTrackingOptions.SpanId;
 });
 
-builder.Services.Configure<SimpleConsoleFormatterOptions>(
-    ConsoleFormatterNames.Simple,
-    options =>
-    {
-        options.IncludeScopes = true;
-    });
+builder.Logging.AddSimpleConsole(options =>
+{
+    options.IncludeScopes = true;
+});
 
 builder.Services.AddHttpClient("CloudflareWorkersAi", client =>
 {

@@ -183,10 +183,37 @@ The ASP.NET Core logging framework is configured with
 `ActivityTrackingOptions.TraceId | ActivityTrackingOptions.SpanId` via
 `builder.Logging.Configure(...)`. The Simple console formatter is
 configured with `IncludeScopes = true` via
-`builder.Services.Configure<SimpleConsoleFormatterOptions>(
-ConsoleFormatterNames.Simple, ...)`. When `Activity.Current` is
-active, `TraceId` and `SpanId` are rendered in the console output as
-part of the logging scope.
+`builder.Logging.AddSimpleConsole(options => {
+options.IncludeScopes = true; })`.
+
+`AddSimpleConsole` configures the default (unnamed)
+`SimpleConsoleFormatterOptions` instance, which is the options object
+the `SimpleConsoleFormatter` actually reads via
+`IOptionsMonitor<SimpleConsoleFormatterOptions>.CurrentValue`. The
+previous `Configure<SimpleConsoleFormatterOptions>(
+ConsoleFormatterNames.Simple, ...)` approach configured named options
+that the formatter never resolved, so scopes were not rendered.
+
+`Activity.Current` is non-null during request processing because the
+ASP.NET Core hosting layer creates a request `Activity` when logging
+is enabled (see `HostingApplicationDiagnostics.BeginRequest`), even
+without an explicit `ActivityListener`. Lunar's custom
+`ActivitySource` activities require a listener to materialize
+(`ActivitySource.StartActivity` returns `null` when no listener
+exists); they remain ready for a future OpenTelemetry
+listener/exporter. The console correlation uses the ASP.NET Core
+request `Activity` as the current activity.
+
+When `Activity.Current` is active, `TraceId` and `SpanId` are
+rendered in the console output as part of the logging scope.
+
+Console correlation is manually smoke-tested against the real runtime
+host. The real-host formatter configuration is verified by
+`ObservabilityConfigurationTests.RealHost_SimpleConsoleFormatterOptions_IncludesScopes`
+and
+`ObservabilityConfigurationTests.RealHost_ActivityTrackingOptions_ContainsTraceIdAndSpanId`,
+which resolve options from the actual Lunar application service
+provider.
 
 ## Successful generation log shape
 
@@ -298,13 +325,44 @@ metric tags. Provider telemetry tests exercise the real
 `CloudflareWorkersAiTextToImageExecutor` offline using a fake HTTP
 handler — no test double manually emits Infrastructure telemetry.
 
+### Cloudflare per-request usage
+
+Per-request Neuron usage is **not available** from the current
+Cloudflare Workers AI image generation API for
+`@cf/black-forest-labs/flux-1-schnell`. The API response returns only
+a base64-encoded image; no usage object, no Neuron count, and no
+usage response headers are documented.
+
+Exact estimation is also not defensible because:
+
+- `flux-1-schnell` does not expose `width`/`height` request parameters;
+- the default output resolution is not documented;
+- the 512x512 tile-count calculation rule is not documented.
+
+Therefore Lunar does not fabricate usage data. The provider success
+log reports `Provider`, `Model`, `HttpStatus`, `DurationMs`, and
+`OutputSizeBytes` only. No `UsageNeurons`, `EstimatedNeurons`,
+`CreditsSpent`, `ActualCost`, or `ActualNeurons` field is emitted.
+
+Use the Cloudflare Workers AI dashboard for authoritative aggregate
+Neuron consumption. AI Gateway may provide better future per-request
+usage/cost observability but migrating to AI Gateway is out of scope
+for the current slice.
+
 ## Current limitations
 
 - No OpenTelemetry SDK or OTLP exporter is configured.
 - No trace backend, metrics backend, or dashboard exists.
 - No historical telemetry retention.
 - No cross-service collector.
-- No provider cost accounting or usage tracking.
+- No provider cost accounting or per-request usage tracking.
+  Cloudflare Workers AI does not return per-request Neuron usage for
+  image generation; estimation is not defensible without documented
+  tile-count rules and output dimensions.
 - No database query instrumentation.
 - Activities and metrics are in-process only; no persistence.
 - No frontend debug panel or trace viewer.
+- Lunar custom `ActivitySource` spans are not materialized in
+  production (no `ActivityListener` registered); they will activate
+  when a future OpenTelemetry listener/exporter is added. Console
+  correlation uses the ASP.NET Core request `Activity`.

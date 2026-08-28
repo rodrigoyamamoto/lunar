@@ -22,3 +22,6 @@ __pycache__/
 # Generated artifacts
 artifacts/*
 !artifacts/.gitkeep
+
+# Lunar local runtime artifact storage
+/backend/src/Lunar.Api/data/artifacts/

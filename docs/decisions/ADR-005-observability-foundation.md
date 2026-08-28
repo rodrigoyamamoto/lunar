@@ -158,9 +158,18 @@ rather than repeating the same Warning/Error at each layer.
 
 The ASP.NET Core logging framework is configured with
 `ActivityTrackingOptions.TraceId | ActivityTrackingOptions.SpanId` via
-`builder.Logging.Configure(...)`. When an `Activity.Current` is active,
-the `TraceId` and `SpanId` are automatically included in every log
-entry within that activity's scope by the built-in logger formatter.
+`builder.Logging.Configure(...)`. The Simple console formatter is
+configured with `IncludeScopes = true` via
+`builder.Logging.AddSimpleConsole(...)`, which configures the default
+(unnamed) `SimpleConsoleFormatterOptions` that the formatter actually
+reads. When `Activity.Current` is active, `TraceId` and `SpanId` are
+rendered in the console output as part of the logging scope.
+
+`Activity.Current` is non-null during request processing because the
+ASP.NET Core hosting layer creates a request `Activity` when logging
+is enabled, even without an explicit `ActivityListener`. Lunar's
+custom `ActivitySource` activities require a listener to materialize
+and remain ready for a future OpenTelemetry listener/exporter.
 
 ### Cloudflare HttpClient noise reduction
 
